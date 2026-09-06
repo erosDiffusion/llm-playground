@@ -14,6 +14,7 @@ This repo is `oem-agent`'s external storage and playground on GitHub. These rule
 ## Hard rules
 
 - **NO SECRETS.** Never commit tokens, API keys, passwords, private endpoints, or personal data. Before any push: scan staged files for `api[_-]?key`, `secret`, `password`, `bearer`, `github_pat_`, `ghp_`, `sk-…`, private-key blocks. If an archived script contains one, redact it to an environment-variable placeholder and note the variable name in `scripts/README.md`.
+- **NO ADULT/NSFW CONTENT.** This is a public repo: no adult material of any kind — not prompts or scene text, not images, not character/name pools referencing real people in sexual contexts. Such material stays on local disk only. When archiving from a local project, archive the *mechanism and format* (scripts, grammar specs), never the content (user rule, 2026-09-06).
 - **NO binaries or compiled artifacts** (`.so`, `.pyd`, `.exe`, wheels), **no video**, **no large images**. Text + source + occasional small images only. Keep single files under ~1 MB; keep the whole repo small (target < 50 MB).
 - **Keep it simple.** If a file fits none of the approved uses above or breaks a size rule, it does not belong here — find another place.
 - **Provenance.** Every archived artifact records where it came from (machine path + date) — in `scripts/README.md` or the manifest's header.
