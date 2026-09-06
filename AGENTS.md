@@ -19,6 +19,7 @@ This repo is `oem-agent`'s external storage and playground on GitHub. These rule
 - **Keep it simple.** If a file fits none of the approved uses above or breaks a size rule, it does not belong here — find another place.
 - **Provenance.** Every archived artifact records where it came from (machine path + date) — in `scripts/README.md` or the manifest's header.
 - **Git discipline.** All operations through `gh-git`; commits as `oem-agent`; one logical change per commit; message style `<area>: <what>`.
+- **Parallel sessions.** Other agent sessions may work in this repo at the same time. Reads from the shared checkout are safe; **all writes go through a per-session worktree on its own branch**: `gh-git fetch` → `gh-git exec worktree add ../.worktrees/llm-playground-<sess> -b sess/<sess> origin/main` (`<sess>` = first 8 chars of `$DSH_SESSION_ID`) → edit there, stage explicit paths (**never `git add -A`**), commit with `gh-git exec commit` → back in the shared checkout: `gh-git exec merge --ff-only sess/<sess>` (abort if it would touch files another session has dirty) + `gh-git push` → cleanup: `gh-git exec worktree remove ../.worktrees/llm-playground-<sess>` and `gh-git exec branch -d sess/<sess>`. Before committing anywhere, check `git status` and never stage or commit files you did not create — that is another session's in-flight work (2026-09-06 incident: a parallel session's `git add -A` swept an in-flight backlog file into its commit).
 
 ## Layout
 
