@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# remote-gpu — memory orchestration between ComfyUI and unsloth on the render box.
+#
+# WHY THIS EXISTS (verified 2026-09-06):
+#   - WITHIN unsloth, auto-eviction WORKS across subsystems: loading a diffusion
+#     model evicts the active LLM and vice versa (studio's single active-model
+#     manager spans /api/inference/* + /api/inference/images|video/*).
+#   - BETWEEN unsloth and ComfyUI there is NO awareness: two separate processes,
+#     both will hold VRAM/RAM simultaneously. This script enforces the protocol:
+#     before work in either subsystem, free the other; verify after each step.
+#
+# Usage:
+#   remote-gpu status                     # who holds what (both boxes' state)
+#   remote-gpu ensure-free                # free ComfyUI + all unsloth models; exit 0 when clean
+#   remote-gpu free-comfy                 # ComfyUI /free + verify
+#   remote-gpu free-unsloth               # unload active LLM + images + video subsystems + verify
+#   remote-gpu load-llm <org-id>          # e.g. unsloth/gemma-4-E4B-it-GGUF (evicts any active model)
+#   remote-gpu load-image <repo> <file.gguf>  # diffusion model into images subsystem
+#
+# Key: uses ~/.dsh/remote-box/unsloth.key when present; otherwise calls keyless
+# (works once the user enables keyless access in studio). Env: COMFY_REMOTE_HOST,
+# UNSLOTH_PORT, KEY_FILE.
+
+set -uo pipefail
+B=${COMFY_REMOTE_HOST:-192.168.1.34}
+CPORT=${COMFY_PORTS:-8188}
+U=${UNSLOTH_PORT:-8888}
+KEY_FILE=${KEY_FILE:-/home/oem/.dsh/remote-box/unsloth.key}
+
+AUTH=()
+if [ -f "$KEY_FILE" ] && [ -s "$KEY_FILE" ]; then
+  AUTH=(-H "Authorization: Bearer $(cat "$KEY_FILE")")
+fi
+
+vram_ram() { curl -s -m 5 "http://$B:$CPORT/system_stats" | python3 -c "
+import json,sys
+try: d=json.load(sys.stdin)
+except Exception: print('  (ComfyUI unreachable — VRAM/RAM unknown)'); sys.exit(0)
+x=d['devices'][0]; r=d['system']
+f=(x.get('vram_free') or 0)/1048576; t=(x.get('vram_total') or 0)/1048576
+if f>100: f,t=f/1024,t/1024
+print(f'  VRAM free {f:.1f}/{t:.1f} GiB | RAM free {r[\"ram_free\"]/1073741824:.1f}/{r[\"ram_total\"]/1073741824:.0f} GiB')" 2>/dev/null; }
+
+active() { curl -s -m 5 "http://$B:$U/v1/models" | python3 -c "
+import json,sys
+try: d=json.load(sys.stdin)
+except Exception: print('  (unsloth unreachable)'); sys.exit(0)
+a=[m['id'].split('/')[-1] for m in d.get('data',[]) if m.get('loaded')]
+print('  unsloth active model:', a or '(none)')" 2>/dev/null; }
+
+img_state() { curl -s -m 5 "${AUTH[@]}" "http://$B:$U/api/inference/images/status" | python3 -c "
+import json,sys
+try: d=json.load(sys.stdin); print('  images subsystem loaded:', d.get('loaded'))
+except Exception: pass" 2>/dev/null; }
+
+poll_until() { # <desc> <fn1> [fn2 ...] — all named condition functions must pass; poll up to 60s
+  local desc=$1; shift
+  for i in $(seq 1 12); do
+    sleep 5
+    ok=1
+    for fn in "$@"; do $fn >/dev/null 2>&1 || ok=0; done
+    if [ "$ok" = "1" ]; then echo "  $desc: settled (t+$((i*5))s)"; return 0; fi
+  done
+  echo "  $desc: NOT settled after 60s — check manually" >&2; return 1
+}
+
+llm_none() { [ -z "$(curl -s -m 5 "http://$B:$U/v1/models" | python3 -c "import json,sys;print(''.join(m['id'] for m in json.load(sys.stdin).get('data',[]) if m.get('loaded')))" 2>/dev/null)" ]; }
+imgs_none() { [ "$(curl -s -m 5 "${AUTH[@]}" "http://$B:$U/api/inference/images/status" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("loaded"))' 2>/dev/null)" = "False" ]; }
+
+cmd=${1:-status}; shift || true
+case "$cmd" in
+  status)
+    echo "box $B — ComfyUI :$CPORT · unsloth :$U"
+    curl -s -m 5 "http://$B:$CPORT/system_stats" >/dev/null 2>&1 && echo "  comfyui   : UP" || echo "  comfyui   : DOWN"
+    vram_ram; active; img_state
+    ;;
+  free-comfy)
+    echo "freeing ComfyUI models..."
+    curl -s -m 10 -X POST "http://$B:$CPORT/free" -H 'Content-Type: application/json' -d '{"unload_models":true}' >/dev/null
+    sleep 3; vram_ram
+    ;;
+  free-unsloth)
+    echo "unloading unsloth active model(s)..."
+    A=$(curl -s -m 5 "http://$B:$U/v1/models" | python3 -c "import json,sys;[print(m['id']) for m in json.load(sys.stdin).get('data',[]) if m.get('loaded')]" 2>/dev/null)
+    for m in $A; do
+      curl -s -m 60 -X POST "${AUTH[@]}" -H 'Content-Type: application/json' \
+        -d "{\"model_path\":\"$m\"}" "http://$B:$U/api/inference/unload" >/dev/null 2>&1 || true
+    done
+    # diffusion/video subsystems (if anything is loaded there)
+    curl -s -m 30 -X POST "${AUTH[@]}" "http://$B:$U/api/inference/images/unload" >/dev/null 2>&1 || true
+    curl -s -m 30 -X POST "${AUTH[@]}" "http://$B:$U/api/inference/video/unload" >/dev/null 2>&1 || true
+    poll_until "unsloth fully unloaded" llm_none imgs_none
+    vram_ram; active
+    ;;
+  ensure-free)
+    echo "== ensuring the box is free for new work =="
+    "$0" free-comfy >/dev/null
+    "$0" free-unsloth >/dev/null
+    echo "state:"; vram_ram; active
+    if llm_none && imgs_none; then echo "CLEAN — ready"; exit 0; else echo "NOT CLEAN"; exit 1; fi
+    ;;
+  load-llm)
+    M=${1:?usage: remote-gpu load-llm <org-id e.g. unsloth/gemma-4-E4B-it-GGUF>}
+    echo "loading LLM $M (evicts any active model)..."
+    curl -s -m 300 -X POST "${AUTH[@]}" -H 'Content-Type: application/json' \
+      -d "{\"model_path\":\"$M\"}" "http://$B:$U/api/inference/load" | head -c 150; echo
+    for i in $(seq 1 24); do sleep 5
+      A=$(curl -s -m 5 "http://$B:$U/v1/models" | python3 -c "import json,sys;print([m['id'] for m in json.load(sys.stdin).get('data',[]) if m.get('loaded')])" 2>/dev/null)
+      case "$A" in *"$M"*) echo "  loaded (t+$((i*5))s)"; break;; esac
+    done
+    vram_ram; active
+    ;;
+  load-image)
+    R=${1:?usage: remote-gpu load-image <repo> <file.gguf>}
+    F=${2:?missing gguf filename}
+    echo "loading diffusion $R/$F into images subsystem (evicts any active model)..."
+    curl -s -m 300 -X POST "${AUTH[@]}" -H 'Content-Type: application/json' \
+      -d "{\"model_path\":\"$R\",\"gguf_filename\":\"$F\",\"model_kind\":\"gguf\"}" \
+      "http://$B:$U/api/inference/images/load" | head -c 200; echo
+    for i in $(seq 1 24); do sleep 5
+      S=$(curl -s -m 5 "${AUTH[@]}" "http://$B:$U/api/inference/images/status" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("loaded"))' 2>/dev/null)
+      [ "$S" = "True" ] && { echo "  loaded (t+$((i*5))s)"; break; }
+    done
+    vram_ram; active; img_state
+    ;;
+  *) echo "usage: remote-gpu {status|free-comfy|free-unsloth|ensure-free|load-llm <id>|load-image <repo> <file.gguf>}" >&2; exit 2;;
+esac
