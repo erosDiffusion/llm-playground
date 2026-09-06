@@ -1,0 +1,3 @@
+name: Blender Director
+description: 创造模式的全部能力 + blender-director 技能：用 MCP 导演 Blender 5.1.2 的摄影机（对话/动作提示 → 分镜 → 逐帧烘焙 → headless 渲染 → ffmpeg 编码 mp4）。Workbench 平面色极简默认、彩色火柴人角色、24fps、2–15s、地面可见；每次导出必附 cued .md + H3 full-reference prompt，全部产物存资产文件夹 generated/movies/<YYYY-MM-DD>/<scene-name>/。用于反复出现的 Blender 导演任务。
+order: 6

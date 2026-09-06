@@ -1,0 +1,26 @@
+# TEMPLATE — remote ComfyUI auto-start (LINUX). Fill the two <...> placeholders, then:
+#   sudo cp remote-boot.service /etc/systemd/system/comfyui.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now comfyui
+# Flags mirror the canonical local startup (see start_comfyui_manager.sh in this vault);
+# adjust to whatever the remote box actually uses. --listen 0.0.0.0 is REQUIRED for LAN access.
+
+[Unit]
+Description=ComfyUI on the render box (auto-start)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# <COMFYUI_DIR> = absolute path of the ComfyUI checkout on this box
+WorkingDirectory=<COMFYUI_DIR>
+ExecStart=<COMFYUI_DIR>/venv/bin/python main.py \
+  --listen 0.0.0.0 --port 9000 \
+  --enable-manager --enable-cors-header "*" --enable-manager-legacy-ui
+# Optional hardening:
+Restart=on-failure
+RestartSec=15
+# If the box also runs other GPU work you want protected, consider:
+# OOMPolicy=continue
+
+[Install]
+WantedBy=multi-user.target

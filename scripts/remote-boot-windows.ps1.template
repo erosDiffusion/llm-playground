@@ -1,0 +1,26 @@
+# TEMPLATE — remote ComfyUI auto-start (WINDOWS). Run ONCE on the box in an admin PowerShell.
+# Fill the two <...> placeholders first. Flags mirror the canonical local startup
+# (see start_comfyui_manager.sh in this vault); --listen 0.0.0.0 is REQUIRED for LAN access.
+
+$ComfyDir   = "<C:\path\to\ComfyUI>"
+$PythonExe  = "$ComfyDir\venv\Scripts\python.exe"
+$Flags      = "--listen 0.0.0.0 --port 9000 --enable-manager --enable-cors-header `"`*`" --enable-manager-legacy-ui"
+
+# --- auto-start at logon (use -AtStartup instead if the box boots unattended) ---
+$act  = New-ScheduledTaskAction -Execute $PythonExe -Argument $Flags -WorkingDirectory $ComfyDir
+$trig = New-ScheduledTaskTrigger -AtLogOn
+Register-ScheduledTask -TaskName "ComfyUI-AutoStart" -Action $act -Trigger $trig -Description "oem-agent: auto-start remote ComfyUI"
+
+# --- optional watchdog: restart ComfyUI if it dies (run via Task Scheduler or a loop) ---
+# Save as C:\path\to\comfyui-watchdog.ps1 and loop it (e.g. a second scheduled task every 5 min):
+@'
+$base = "http://127.0.0.1:9000"
+try {
+    Invoke-WebRequest -UseBasicParsing -TimeoutSec 4 "$base/system_stats" | Out-Null
+    exit 0   # healthy — do nothing
+} catch {
+    # down — start it (the scheduled task is idempotent enough for a second launch attempt)
+    Start-Process -WorkingDirectory $env:COMFY_DIR "<python.exe>" --listen 0.0.0.0 --port 9000 ...
+    Write-EventLog -LogName Application -Source ComfyUI-Watchdog -EntryWarning "ComfyUI was down; start attempted"
+}
+'@

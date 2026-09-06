@@ -1,0 +1,3 @@
+name: 本地视频流水线
+description: Cordis 创造模式的全部能力 + local-video-pipeline 技能（park/resume、aimdo 内存 API、8188 渲染脚本、错误分诊）。用于本地 klein/H3 视频工作。
+order: 5

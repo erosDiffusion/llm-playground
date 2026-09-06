@@ -1,0 +1,111 @@
+diff --git a/packages/client/ui-primitives/src/markdown/render.tsx b/packages/client/ui-primitives/src/markdown/render.tsx
+index 950d85be52..df6258d056 100644
+--- a/packages/client/ui-primitives/src/markdown/render.tsx
++++ b/packages/client/ui-primitives/src/markdown/render.tsx
+@@ -6,10 +6,12 @@
+  *
+  * Untrusted-output policy (unchanged from the replaced pipeline): link and
+  * image destinations pass a protocol allowlist, images additionally require
+- * absolute HTTP(S), raw HTML renders as literal text (no HTML enters the
+- * DOM), and KaTeX runs without trusted commands. Fragment-anchor URLs fail
+- * the allowlist, so footnote references and back-references render as plain
+- * text rather than in-page links.
++ * absolute HTTP(S) — except image URLs whose path ends in a known video
++ * extension (.mp4/.webm/.ogv), which render as a controls-enabled <video>
++ * with the same allowlist — raw HTML renders as literal text (no HTML enters
++ * the DOM), and KaTeX runs without trusted commands. Fragment-anchor URLs
++ * fail the allowlist, so footnote references and back-references render as
++ * plain text rather than in-page links.
+  *
+  * Merge-extensible node unions fall through the documented default (render
+  * nothing) rather than ending in assertNever: grammars registered elsewhere
+@@ -68,6 +70,22 @@ function remoteImageUrl(url: string): string | undefined {
+   }
+ }
+ 
++/** Path extensions that render an image-syntax destination as a <video> player instead of an <img>. */
++const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.ogv'])
++
++function remoteVideoUrl(url: string): string | undefined {
++  try {
++    const parsed = new URL(url)
++    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined
++    const dot = parsed.pathname.lastIndexOf('.')
++    if (dot === -1) return undefined
++    return VIDEO_EXTENSIONS.has(parsed.pathname.slice(dot).toLowerCase()) ? url : undefined
++  } catch {
++    // Same single failure mode as above: not an absolute URL.
++    return undefined
++  }
++}
++
+ /** Link/image reference targets collected from a document (first definition per identifier wins, as in CommonMark). */
+ export interface ReferenceTargets {
+   /** Link/image definitions keyed by upper-cased identifier. */
+@@ -502,7 +520,23 @@ function inlineCodeHttpUrl(value: string): string | undefined {
+ }
+ 
+ function renderImage(url: string, alt: string, key: Key): ReactNode {
+-  const imageSrc = remoteImageUrl(sanitizeUrl(normalizeUri(url)))
++  const sanitized = sanitizeUrl(normalizeUri(url))
++  const videoSrc = remoteVideoUrl(sanitized)
++  if (videoSrc !== undefined) {
++    // React's VideoHTMLAttributes omit the global referrerpolicy attribute; the
++    // protocol allowlist + absolute-HTTP(S) check above are the real gate, so
++    // the player is rendered without it rather than widening the element type.
++    return (
++      <video
++        key={key}
++        className={css.image}
++        src={videoSrc}
++        controls
++        preload="metadata"
++      />
++    )
++  }
++  const imageSrc = remoteImageUrl(sanitized)
+   if (imageSrc === undefined) {
+     return <span key={key} className={css.imageAlt}>{alt}</span>
+   }
+diff --git a/packages/client/ui-primitives/tests/markdown.client.spec.tsx b/packages/client/ui-primitives/tests/markdown.client.spec.tsx
+index eb6b450924..1f8c0950d5 100644
+--- a/packages/client/ui-primitives/tests/markdown.client.spec.tsx
++++ b/packages/client/ui-primitives/tests/markdown.client.spec.tsx
+@@ -289,6 +289,37 @@ describe('MarkdownText', () => {
+     }
+   })
+ 
++  it('renders video-extension image URLs as a bounded <video> player', () => {
++    const markdown = [
++      '![orbit](http://127.0.0.1:8765/cube-orbit.mp4)',
++      '![stream](https://example.com/clip.WEBM?token=abc)',
++      '![still](https://example.com/photo.png)',
++    ].join('\n\n')
++    const { container } = render(<MarkdownText text={markdown} />)
++    const videos = [...container.querySelectorAll('video')]
++    expect(videos.map(video => video.getAttribute('src'))).toEqual([
++      'http://127.0.0.1:8765/cube-orbit.mp4',
++      'https://example.com/clip.WEBM?token=abc',
++    ])
++    for (const video of videos) {
++      expect(video.getAttribute('controls')).toBe('')
++      expect(video.getAttribute('preload')).toBe('metadata')
++    }
++    const images = [...container.querySelectorAll('img')]
++    expect(images.map(image => image.getAttribute('src'))).toEqual(['https://example.com/photo.png'])
++  })
++
++  it('keeps unsafe or relative video URLs inert', () => {
++    const markdown = [
++      '![local](private.mp4)',
++      '![file](file:///workspace/private.mp4)',
++      '![script](javascript:alert(1))',
++    ].join('\n\n')
++    const { container } = render(<MarkdownText text={markdown} />)
++    expect(container.querySelector('video')).toBeNull()
++    expect(container.querySelector('img')).toBeNull()
++  })
++
+   it('neutralizes raw HTML, unsafe or relative links, and unsupported images', () => {
+     const markdown = [
+       '<script>globalThis.compromised = true</script>',

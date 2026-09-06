@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+# gh-git — scoped GitHub git operations for the DSH agent.
+#
+# Credential source : ~/.dsh/github/token   (fine-grained PAT, chmod 600)
+# Scope policy      : ~/.dsh/github/config.json -> allowed_repos (owner/repo list)
+# Commit identity   : same config -> user_name / user_email
+#
+# All github.com git operations in an agent session go through this wrapper:
+# it injects the PAT per invocation (http.extraheader — never written to disk
+# or into URLs) and refuses repos outside the allowlist.
+
+set -euo pipefail
+
+GH_DIR="$HOME/.dsh/github"
+CFG="${GH_GIT_CONFIG:-$GH_DIR/config.json}"
+TOKEN_FILE="${GH_GIT_TOKEN_FILE:-$GH_DIR/token}"
+HOST="github.com"
+
+die() { echo "gh-git: $*" >&2; exit 1; }
+
+# --- config helpers (python3 for JSON) --------------------------------------
+cfg_get() { # key -> value ('' if absent)
+  python3 - "$CFG" "$1" <<'PY'
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+v = d.get(sys.argv[2], "")
+print(v if isinstance(v, (str, int, float)) else "")
+PY
+}
+
+allowed_repos() {
+  python3 - "$CFG" <<'PY'
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    d = {}
+for r in d.get("allowed_repos", []):
+    if isinstance(r, str) and r.strip():
+        print(r.strip())
+PY
+}
+
+norm_repo() { # URL or owner/repo -> lowercase owner/repo
+  python3 - "$1" <<'PY'
+import re, sys
+s = sys.argv[1].strip().lower()
+m = re.search(r'(?:github\.com[:/])?([^/]+/[^/#?]+?)(?:\.git)?$', s)
+print(m.group(1) if m else s)
+PY
+}
+
+to_https() { # SSH or HTTPS github URL -> canonical https URL (pass-through otherwise)
+  python3 - "$1" <<'PY'
+import re, sys
+s = sys.argv[1].strip()
+m = re.match(r'^(?:git@|https?://)github\.com[:/](.+?)(?:\.git)?/?$', s, re.I)
+print(f"https://github.com/{m.group(1)}.git" if m else s)
+PY
+}
+
+check_scope() { # $1: URL or owner/repo
+  local repo allowed a
+  repo="$(norm_repo "$1")"
+  allowed="$(allowed_repos)"
+  if [ -z "$allowed" ]; then
+    die "no repos in allowed_repos ($CFG) and '$repo' is not permitted — ask the user to add it"
+  fi
+  while IFS= read -r a; do
+    [ "$(norm_repo "$a")" = "$repo" ] && return 0
+  done <<< "$allowed"
+  die "repo '$repo' is NOT in allowed_repos ($CFG) — refusing (scope policy)"
+}
+
+# --- git with injected credential + identity ---------------------------------
+# Reads (clone/fetch/pull) work anonymously when no token is stored — public
+# repos need no auth. Writes (push, remote-touching exec) always require one.
+have_token() { [ -f "$TOKEN_FILE" ] && [ -s "$TOKEN_FILE" ]; }
+
+require_token() { # $1 = what it's needed for
+  have_token || die "no token at $TOKEN_FILE — required for $1; ask the user for a fine-grained PAT (skill github-dev → Setup)"
+}
+
+run_git() {
+  local name email
+  name="$(cfg_get user_name)"
+  email="$(cfg_get user_email)"
+  local -a idc=()
+  [ -n "$name" ] && idc+=(-c "user.name=$name")
+  [ -n "$email" ] && idc+=(-c "user.email=$email")
+  if have_token; then
+    GIT_CONFIG_COUNT=1 \
+    GIT_CONFIG_KEY_0="http.https://$HOST/.extraheader" \
+    GIT_CONFIG_VALUE_0="Authorization: Basic $(printf 'x-access-token:%s' "$(tr -d '[:space:]' < "$TOKEN_FILE")" | base64 -w0)" \
+    git "${idc[@]}" "$@"
+  else
+    git "${idc[@]}" "$@"
+  fi
+}
+
+remote_url() { # $1 = remote name (default origin); prints URL or dies
+  local r="${1:-origin}"
+  git remote get-url "$r" 2>/dev/null || die "no git repo here, or no remote '$r'"
+}
+
+usage() {
+  cat <<'EOF'
+gh-git — scoped GitHub git operations (github.com only)
+
+Usage:
+  gh-git repos                      list allowed repos
+  gh-git clone <url> [dir]          scope-checked clone (SSH or HTTPS URL)
+  gh-git pull [remote] [ref]        scope-checked pull   (inside a repo)
+  gh-git push [remote] [args...]    scope-checked push   (inside a repo)
+  gh-git fetch [remote]             scope-checked fetch  (inside a repo)
+  gh-git exec <git args...>         any other git command; identity + credential injected
+  gh-git config show                masked config summary
+
+Scope: allowed_repos in ~/.dsh/github/config.json. Token: ~/.dsh/github/token.
+EOF
+}
+
+cmd="${1:-help}"
+case "$cmd" in
+  repos)
+    a="$(allowed_repos)"
+    if [ -z "$a" ]; then echo "(no repos configured yet — add them to allowed_repos in $CFG)"; else echo "$a"; fi
+    ;;
+  clone)
+    shift
+    url="${1:-}"
+    [ -n "$url" ] || die "usage: gh-git clone <url> [dir]"
+    url="$(to_https "$url")"
+    check_scope "$url"
+    shift
+    run_git clone -- "$url" "$@"
+    ;;
+  pull|fetch)
+    shift
+    remote="${1:-origin}"
+    case "$remote" in -*) remote=origin ;; esac
+    check_scope "$(remote_url "$remote")"
+    run_git "$cmd" "$@"
+    ;;
+  push)
+    shift
+    remote="${1:-origin}"
+    case "$remote" in -*) remote=origin ;; esac
+    require_token "push (write access)"
+    check_scope "$(remote_url "$remote")"
+    run_git "$cmd" "$@"
+    ;;
+  exec)
+    shift
+    [ $# -gt 0 ] || die "usage: gh-git exec <git args...>"
+    case " $* " in
+      *" push "*|*" pull "*|*" fetch "*|*" ls-remote "*)
+        require_token "this git command (it talks to a remote)"
+        check_scope "$(remote_url origin)" ;;
+    esac
+    run_git "$@"
+    ;;
+  config)
+    [ "${2:-}" = "show" ] || { usage; exit 1; }
+    echo "config      : $CFG"
+    echo "token file  : $TOKEN_FILE ($([ -s "$TOKEN_FILE" ] && echo present || echo 'MISSING/EMPTY'))"
+    echo "allowed_repos:"
+    a="$(allowed_repos)"
+    if [ -n "$a" ]; then echo "$a" | sed 's/^/  - /'; else echo "  (none)"; fi
+    echo "identity    : $(cfg_get user_name) <$(cfg_get user_email)>"
+    ;;
+  *)
+    usage
+    ;;
+esac

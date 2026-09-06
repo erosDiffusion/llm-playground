@@ -1,0 +1,3 @@
+name: GitHub Dev
+description: 标准 coding agent + scoped GitHub access：所有 github.com 的 git 操作走 ~/.dsh/bin/gh-git（fine-grained PAT，~/.dsh/github/config.json 的 allowed_repos 硬范围）。runbook 在 skill github-dev。用于需要 clone/pull/push 到用户 GitHub 的任务。
+order: 7

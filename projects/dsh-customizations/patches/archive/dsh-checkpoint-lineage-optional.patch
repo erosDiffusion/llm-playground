@@ -1,0 +1,25 @@
+diff --git a/packages/session/session-projection-cache/src/spec.ts b/packages/session/session-projection-cache/src/spec.ts
+index 35351917a5..568348cc1b 100644
+--- a/packages/session/session-projection-cache/src/spec.ts
++++ b/packages/session/session-projection-cache/src/spec.ts
+@@ -38,12 +38,18 @@ export const checkpointRow = z.object({
+  * old record pass every watermark check and seed state folded from an
+  * unrelated log. Reads validate this against the live header (listing) or
+  * the stored header (cold read) before accepting any record.
++ *
++ * The lineage fields are optional because records admitted through old
++ * domain versions predate them. The reader (`identityMatches`) interprets
++ * their absence as the unseeded lineage — exact for an unseeded session,
++ * while a seeded expectation fails the match and the record is discarded
++ * to a cold rebuild. Current-version writes always store both fields.
+  */
+ export const checkpointIdentity = z.object({
+   createdAt: z.number().int().nonnegative(),
+   cwd: z.string().optional(),
+-  isSeeded: z.boolean(),
+-  inheritedEventCount: z.number().int().nonnegative().transform(SessionLogOffset),
++  isSeeded: z.boolean().optional(),
++  inheritedEventCount: z.number().int().nonnegative().transform(SessionLogOffset).optional(),
+ })
+ 
+ /** The identity fields a record is bound to, inferred from {@link checkpointIdentity}. */
