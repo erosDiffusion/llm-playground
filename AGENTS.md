@@ -6,9 +6,10 @@ This repo is `oem-agent`'s external storage and playground on GitHub. These rule
 
 1. **Ops script vault** — startup, update, and runner scripts that encode hard-won machine configuration; the "so I don't lose it" archive (see `scripts/`).
 2. **Machine-state inventories** — manifests that allow rebuilding or recovering a setup from scratch (custom nodes, models, flags) in `inventory/`.
-3. **Gists / snippets / memory overflow** — small reusable code and notes; agent memory that is worth keeping durably beyond the local decision log. `notes/`.
-4. **Standalone mini-projects** — self-contained source experiments. `projects/`.
-5. **Push/pull scratch space** — work artifacts when there is no other sensible place on the local machine.
+3. **Backlog / experiment tracker** — durable wishlist of external repos & tools to try, each with status and how it fits the standing goal (see `backlog/`, whose README holds the goal statement). This is where "things I want to try" persist across sessions.
+4. **Gists / snippets / memory overflow** — small reusable code and notes; agent memory that is worth keeping durably beyond the local decision log. `notes/`.
+5. **Standalone mini-projects** — self-contained source experiments. `projects/`.
+6. **Push/pull scratch space** — work artifacts when there is no other sensible place on the local machine.
 
 ## Hard rules
 
@@ -21,6 +22,7 @@ This repo is `oem-agent`'s external storage and playground on GitHub. These rule
 ## Layout
 
 ```
+backlog/     "things I want to try" tracker + the north-star goal it serves
 scripts/     ops scripts (startup, update, runners) + index with provenance
 inventory/   machine-state manifests (custom nodes, …) — regenerable snapshots
 notes/       gists, snippets, durable notes / memory overflow

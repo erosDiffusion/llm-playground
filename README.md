@@ -7,6 +7,7 @@ It doubles as the agent's small external storage: ops scripts that must not be l
 ## What's inside
 
 ```
+backlog/     "things I want to try" tracker — external repos/tools with status, serving the north-star goal (Blender previs → MiniMax H3, user-driven camera)
 scripts/     ops scripts vault — ComfyUI startup, custom-node updater, remote runner, flow tester (+ provenance index)
 inventory/   machine-state manifests — e.g. the 58-pack custom-nodes inventory with origins & commits
 notes/       gists, snippets, durable notes (memory overflow)
