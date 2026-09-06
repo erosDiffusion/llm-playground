@@ -1,0 +1,25 @@
+# TEMPLATE — local ComfyUI auto-start (Linux Mint/Ubuntu user service)
+# Save as: ~/.config/systemd/user/comfyui.service
+# Then run:
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now comfyui.service
+# Optional for true boot (without login):
+#   sudo loginctl enable-linger <USER>
+
+[Unit]
+Description=ComfyUI Service (user)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# <COMFYUI_DIR> = absolute path of the local ComfyUI checkout
+WorkingDirectory=<COMFYUI_DIR>
+Environment=UPDATE_ON_BOOT=0
+Environment="COMFYUI_ARGS=--enable-manager --enable-cors-header * --enable-manager-legacy-ui --listen 0.0.0.0 --port 8188"
+ExecStart=<COMFYUI_DIR>/script_examples/start_comfyui_service.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
