@@ -18,7 +18,7 @@ Flow: text description → agent builds the scene + camera move in Blender (exis
 | Content sourcing / styles | ⬜ exploring | [vfx-from-references](vfx-from-references.md), [sketch-drawing-animation](sketch-drawing-animation.md), [sam3d-body-poses](sam3d-body-poses.md) |
 | Post-processing (upscale) | ⬜ exploring | [dlss5-video-upscale](dlss5-video-upscale.md) |
 | H3 speed / VRAM headroom | ⬜ optional | [minimax-h3-turbo](minimax-h3-turbo.md), [vsa-pdd-acceleration](vsa-pdd-acceleration.md) |
-| Infra / meta (delegation, infra skills, engines) | ⬜ various | [multiagent-3080-delegation](multiagent-3080-delegation.md), [banodoco-integration](banodoco-integration.md), [k8s-podman-knowledge](k8s-podman-knowledge.md), [backend-engines-comparison](backend-engines-comparison.md) |
+| Infra / meta (delegation, infra skills, engines) | ⬜ various | [multiagent-3080-delegation](multiagent-3080-delegation.md), [banodoco-integration](banodoco-integration.md), [k8s-podman-knowledge](k8s-podman-knowledge.md), [backend-engines-comparison](backend-engines-comparison.md), [dflash2-feasibility](dflash2-feasibility.md) |
 | **Ship it** | ⬜ | [movie-pipeline-finish](movie-pipeline-finish.md) |
 
 ## Index (canonical list — keep in sync with entry files)
@@ -45,6 +45,7 @@ Flow: text description → agent builds the scene + camera move in Blender (exis
 | [banodoco-integration](banodoco-integration.md) | integrate | workflow glue | want-to-try |
 | [k8s-podman-knowledge](k8s-podman-knowledge.md) | know-how | infra | want-to-try |
 | [backend-engines-comparison](backend-engines-comparison.md) | explore | infra | want-to-try |
+| [dflash2-feasibility](dflash2-feasibility.md) | explore | infra (agent LLM) | want-to-try |
 
 Types: `external` = try someone else's repo/tool · `build` = build it locally · `explore` = study/experiment · `test` = validate what we have · `integrate` = wire things together · `know-how` = skill building.
 
