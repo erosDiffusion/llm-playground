@@ -3,9 +3,9 @@
 # Needed when running under the web-lite profile (no MCP tools).
 # Usage:  comfy-remote.sh run <workflow.json> [out_dir]     # submit, wait, download outputs
 #         comfy-remote.sh submit <workflow.json>            # submit only, print prompt_id
-# Env:    COMFY_REMOTE (default http://192.168.1.34:9000), MAX_WAIT_S (default 900)
+# Env:    COMFY_REMOTE (default http://192.168.1.34:8188), MAX_WAIT_S (default 900)
 set -uo pipefail
-COMFY=${COMFY_REMOTE:-http://192.168.1.34:9000}
+COMFY=${COMFY_REMOTE:-http://192.168.1.34:8188}
 MAX_WAIT_S=${MAX_WAIT_S:-900}
 
 submit() { # <wf> -> prints prompt_id on stdout; tries wrapped body first (v0.34+), then raw

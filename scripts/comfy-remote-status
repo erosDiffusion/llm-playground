@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# comfy-remote-status — one-shot health check of the render box (192.168.1.34).
+#
+# Usage:
+#   comfy-remote-status          # report state; exit 0 if ComfyUI is up, 1 if down
+#   comfy-remote-status wake     # send Wake-on-LAN magic packet (box fully off case)
+#
+# Box layout (2026-09-06): RTX 3080 10GB · ComfyUI :8188 (user-systemd autostart,
+# see llm-playground scripts/linux-mint-comfyui-autostart.md) · unsloth studio
+# :8888 (autostart; default model Qwen3.8-27B is heavy for a 10GB card — prefer
+# gemma-4-E4B/E2B for light work). GPU discipline: never run ComfyUI workflows
+# while an LLM holds VRAM on that box — unload/switch first, sequential calls only.
+#
+# Env: COMFY_REMOTE_HOST (192.168.1.34), COMFY_PORTS ("8188 9000"),
+#      UNSLOTH_PORT (8888), WOL_MAC (44:af:28:15:2f:d9 — ARP-learned 2026-09-06)
+
+set -uo pipefail
+BOX=${COMFY_REMOTE_HOST:-192.168.1.34}
+PORTS=${COMFY_PORTS:-"8188 9000"}
+U_PORT=${UNSLOTH_PORT:-8888}
+WOL_MAC=${WOL_MAC:-44:af:28:15:2f:d9}
+
+if [ "${1:-}" = "wake" ]; then
+  python3 - "$WOL_MAC" <<'PY'
+import socket, sys
+mac = sys.argv[1].replace(":", "")
+payload = b"\xff" * 6 + bytes.fromhex(mac) * 4
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCASTING, 1)
+s.sendto(payload, ("255.255.255.255", 9))
+s.close()
+print(f"WoL magic packet sent to {sys.argv[1]} (if WoL is enabled on that NIC and the box is off, it should power on in ~30-60s)")
+PY
+  exit 0
+fi
+
+echo "box $BOX"
+if ping -c 1 -W 2 "$BOX" >/dev/null 2>&1; then
+  echo "  ping      : OK (box is ON)"
+else
+  echo "  ping      : FAIL — box off/asleep or off-LAN. Try: comfy-remote-status wake"
+fi
+
+# --- ComfyUI: first live port wins ---
+COMFY_PORT=""
+for p in $PORTS; do
+  if curl -sf -m 4 "http://$BOX:$p/system_stats" >/dev/null 2>&1; then COMFY_PORT=$p; break; fi
+done
+if [ -z "$COMFY_PORT" ]; then
+  echo "  comfyui   : DOWN (nothing on ${PORTS// / or }) — start on the box: systemctl --user restart comfyui.service"
+else
+  echo "  comfyui   : UP on :$COMFY_PORT"
+  curl -s -m 4 "http://$BOX:$COMFY_PORT/system_stats" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for x in d.get("devices", [])[:2]:
+    t = (x.get("vram_total") or 0) / 1048576
+    f = (x.get("vram_free") or 0) / 1048576
+    # API may report MiB already; normalize if the "GiB" value is implausibly large
+    if t > 100: t, f = t / 1024, f / 1024
+    name = x.get("name", "?")
+    print(f"  gpu       : {name} — vram free {f:.1f}/{t:.1f} GiB")' 2>/dev/null
+  Q=$(curl -s -m 4 "http://$BOX:$COMFY_PORT/queue" | python3 -c "import json,sys;d=json.load(sys.stdin);print(len(d.get('queue_running',[])),len(d.get('queue_pending',[])))" 2>/dev/null)
+  [ -n "${Q:-}" ] && echo "  queue     : running ${Q% *}, pending ${Q#* }"
+fi
+
+# --- unsloth studio (informational) ---
+if M=$(curl -s -m 4 "http://$BOX:$U_PORT/v1/models" 2>/dev/null); then
+  echo "  unsloth   : UP on :$U_PORT"
+  echo "$M" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+models = d.get("data", [])
+loaded = ", ".join(m["id"].split("/", 1)[-1] for m in models if m.get("loaded")) or "(none)"
+others = ", ".join(m["id"].split("/", 1)[-1] for m in models if not m.get("loaded"))
+print(f"  llm       : loaded: {loaded} | available: {others}")' 2>/dev/null
+else
+  echo "  unsloth   : DOWN (nothing on :$U_PORT)"
+fi
+
+[ -n "$COMFY_PORT" ] && exit 0 || exit 1
