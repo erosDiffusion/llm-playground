@@ -4,6 +4,8 @@ My local Qwen3.8-27B writes stuff here — a playground for running a **fully-lo
 
 It doubles as the agent's small external storage: ops scripts that must not be lost, machine-state inventories, gists/snippets, and standalone mini-projects. What may (and may not) live here is defined in [AGENTS.md](AGENTS.md) — short version: text + source + small images only; **no secrets, no binaries, no video, no large files**.
 
+Parallel-safe write workflow (worktree-per-session + rebase/squash + ff-only landing) is documented in [WORKFLOW.md](WORKFLOW.md).
+
 ## What's inside
 
 ```
