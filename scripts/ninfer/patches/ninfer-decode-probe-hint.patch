@@ -1,0 +1,119 @@
+diff --git a/src/media/decode/decode.cpp b/src/media/decode/decode.cpp
+index fb60d30b..69de3748 100644
+--- a/src/media/decode/decode.cpp
++++ b/src/media/decode/decode.cpp
+@@ -23,6 +23,7 @@ extern "C" {
+ #include <span>
+ #include <stdexcept>
+ #include <string>
++#include <string_view>
+ #include <utility>
+ #include <vector>
+ 
+@@ -47,6 +48,32 @@ void validate_input(std::span<const std::uint8_t> bytes, const Policy& policy) {
+     }
+ }
+ 
++// avformat_open_input() with a null filename can only probe the raw bytes. The byte
++// patterns of some encoder outputs match the mpegts demuxer's probe score well enough
++// that the probe selects mpegts, exposes no stream at all, and a perfectly decodable
++// image is rejected with "media has no decodable video stream" (the same bytes open
++// fine when given a filename with a matching extension). Anchor the probe with a
++// synthetic filename whose extension matches the container magic so FFmpeg's
++// extension-based demuxer preference applies. Unknown magic yields no hint and the
++// probe behaves exactly as before.
++std::string probe_filename_hint(std::span<const std::uint8_t> bytes) {
++    const auto starts_with = [](std::span<const std::uint8_t> data, std::string_view signature) {
++        return data.size() >= signature.size() &&
++               std::equal(signature.begin(), signature.end(), data.begin());
++    };
++    if (starts_with(bytes, "\x89PNG\r\n\x1a\n")) { return "media.png"; }
++    if (bytes.size() >= 3 && bytes[0] == 0xff && bytes[1] == 0xd8 && bytes[2] == 0xff) {
++        return "media.jpg";
++    }
++    if (bytes.size() >= 12 && starts_with(bytes, "RIFF") &&
++        std::equal(std::string_view("WEBP").begin(), std::string_view("WEBP").end(),
++                   bytes.begin() + 8)) {
++        return "media.webp";
++    }
++    if (starts_with(bytes, "GIF8")) { return "media.gif"; }
++    return {};
++}
++
+ int exif_orientation(std::span<const std::uint8_t> bytes) {
+     constexpr std::size_t limit = 1ULL << 20;
+     bytes                       = bytes.first(std::min(limit, bytes.size()));
+@@ -186,8 +213,10 @@ public:
+             }
+             format_->pb = io_;
+             format_->flags |= AVFMT_FLAG_CUSTOM_IO;
++            const std::string probe_hint = probe_filename_hint(input);
+             AVFormatContext* raw = format_;
+-            int rc               = avformat_open_input(&raw, nullptr, nullptr, nullptr);
++            int rc = avformat_open_input(
++                &raw, probe_hint.empty() ? nullptr : probe_hint.c_str(), nullptr, nullptr);
+             format_              = raw;
+             if (rc < 0) { throw_invalid_media("failed to open media: " + av_error(rc)); }
+             if ((rc = avformat_find_stream_info(format_, nullptr)) < 0) {
+diff --git a/tests/cmake/ProductTests.cmake b/tests/cmake/ProductTests.cmake
+index 2141559c..962961d9 100644
+--- a/tests/cmake/ProductTests.cmake
++++ b/tests/cmake/ProductTests.cmake
+@@ -1,4 +1,5 @@
+ ninfer_add_test(ninfer_media_decode_test
++  NEEDS_SOURCE_DIR
+   SOURCES "${CMAKE_CURRENT_LIST_DIR}/../test_media_decode.cpp"
+   LIBRARIES ninfer_media_decode)
+ 
+diff --git a/tests/test_media_decode.cpp b/tests/test_media_decode.cpp
+index bfe89e7f..6ebb38dc 100644
+--- a/tests/test_media_decode.cpp
++++ b/tests/test_media_decode.cpp
+@@ -3,8 +3,10 @@
+ #include <array>
+ #include <cctype>
+ #include <cstdint>
++#include <fstream>
+ #include <iostream>
+ #include <stdexcept>
++#include <string>
+ #include <string_view>
+ #include <vector>
+ 
+@@ -136,11 +138,36 @@ void test_issue_20_unaligned_jpeg() {
+     }
+ }
+ 
++// sharp/libvips q85 JPEG whose entropy data scores well enough against the mpegts demuxer
++// probe that, with no filename to anchor demuxer selection, avformat_open_input() selects
++// mpegts and exposes no stream at all — decode_image() then threw "media has no decodable
++// video stream" for a perfectly valid image. The decoder must anchor the probe with the
++// container magic (see probe_filename_hint in decode.cpp). 914x734, 142524 bytes.
++void test_mpegts_misprobe_jpeg() {
++    const std::string path =
++        std::string(NINFER_SOURCE_DIR) + "/tests/fixtures/media/sharp_jpeg_mpegts_misprobe.jpg";
++    std::ifstream stream(path, std::ios::binary);
++    if (!stream) { throw std::runtime_error("failed to open media decode fixture: " + path); }
++    std::vector<std::uint8_t> encoded{
++        std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()};
++
++    const ninfer::media::decode::ImageInfo info = ninfer::media::decode::inspect_image(encoded, {});
++    const ninfer::media::decode::Image image    = ninfer::media::decode::decode_image(encoded, {});
++    if (info.width != image.width || info.height != image.height || image.width != 914 ||
++        image.height != 734 || image.rgb.size() != 914U * 734U * 3U) {
++        throw std::runtime_error("decoded misprobe JPEG dimensions mismatch");
++    }
++    bool any_nonblack = false;
++    for (std::uint8_t byte : image.rgb) { if (byte != 0) { any_nonblack = true; break; } }
++    if (!any_nonblack) { throw std::runtime_error("decoded misprobe JPEG is all black"); }
++}
++
+ } // namespace
+ 
+ int main() {
+     try {
+         test_issue_20_unaligned_jpeg();
++        test_mpegts_misprobe_jpeg();
+         std::cout << "ok\n";
+         return 0;
+     } catch (const std::exception& error) {
