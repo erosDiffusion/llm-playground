@@ -1,0 +1,753 @@
+diff --git a/packages/client/ui-conversation/src/client/apply.ts b/packages/client/ui-conversation/src/client/apply.ts
+index 9994c4e9ae..36fabc4996 100644
+--- a/packages/client/ui-conversation/src/client/apply.ts
++++ b/packages/client/ui-conversation/src/client/apply.ts
+@@ -441,9 +441,11 @@ export function apply(ctx: Context, config: Config = Config({})): void {
+           retryFileUpload: undefined,
+           toggleCommandMenu: undefined,
+           stop: undefined,
++          setMergePending: undefined,
+           hooks: {
+             stopShortcut,
+             busyEnter: submissionPolicy.busyEnter,
++            mergePending: submissionPolicy.mergePending,
+             fileUploads: ABSENT_FILE_UPLOADS,
+             notices: ABSENT_NOTICES,
+             lexicon: ABSENT_LEXICON,
+@@ -517,9 +519,11 @@ export function apply(ctx: Context, config: Config = Config({})): void {
+             })
+           },
+         stop: () => { stop(sessionId) },
++        setMergePending: (next) => { submissionPolicy.setMergePending(next) },
+         hooks: {
+           stopShortcut,
+           busyEnter: submissionPolicy.busyEnter,
++          mergePending: submissionPolicy.mergePending,
+           fileUploads: conversation.fileUploads,
+           notices: shell.notices,
+           lexicon: shell.lexicon,
+@@ -547,6 +551,7 @@ export function apply(ctx: Context, config: Config = Config({})): void {
+     input: inputHub,
+     blocks: composerBlocks,
+     maxConcurrentFileUploads,
++    mergePending: () => submissionPolicy.mergePending.getSnapshot(),
+   })
+   ctx.plugin(todoDockEntry)
+   ctx.plugin(queueDockEntry)
+diff --git a/packages/client/ui-conversation/src/client/contract/slots.ts b/packages/client/ui-conversation/src/client/contract/slots.ts
+index 5564aea9b6..f28da6a650 100644
+--- a/packages/client/ui-conversation/src/client/contract/slots.ts
++++ b/packages/client/ui-conversation/src/client/contract/slots.ts
+@@ -390,6 +390,8 @@ export interface ComposerBarInjected {
+   retryFileUpload: ((id: DraftAttachmentId) => void) | undefined
+   toggleCommandMenu: ((selection: EditSelection) => void) | undefined
+   stop: (() => void) | undefined
++  /** Set the pending-queue merge preference; absent without a session. */
++  setMergePending: ((next: boolean) => void) | undefined
+   hooks: {
+     /** Readable sequence while the fixed Stop command is registered. */
+     stopShortcut: ObservableSnapshot<readonly string[]>
+@@ -398,6 +400,8 @@ export interface ComposerBarInjected {
+      * and the primary Send button use while the addressed agent is busy.
+      */
+     busyEnter: ObservableSnapshot<BusyEnterBehavior>
++    /** Live pending-queue merge preference for the composer's merge switch. */
++    mergePending: ObservableSnapshot<boolean>
+     /** Live per-draft upload states for file-kind drafts. */
+     fileUploads: ObservableSnapshot<DraftFileUploads>
+     notices: ObservableSnapshot<InputNotice | null>
+diff --git a/packages/client/ui-conversation/src/client/input/submission-policy.ts b/packages/client/ui-conversation/src/client/input/submission-policy.ts
+index 409f6d0493..41b872ceb7 100644
+--- a/packages/client/ui-conversation/src/client/input/submission-policy.ts
++++ b/packages/client/ui-conversation/src/client/input/submission-policy.ts
+@@ -10,10 +10,12 @@ import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
+ import type {
+   BusyEnterBehavior, ComposerSubmitGesture, InputSubmitMode,
+ } from '../contract/composer-submission.ts'
+-import { BUSY_ENTER_FIELD, DEFAULT_BUSY_ENTER_BEHAVIOR } from '../../submission-settings.ts'
++import {
++  BUSY_ENTER_FIELD, DEFAULT_BUSY_ENTER_BEHAVIOR, DEFAULT_MERGE_PENDING, MERGE_PENDING_FIELD,
++} from '../../submission-settings.ts'
+ import type { ConversationSettings } from '../../submission-settings.ts'
+ 
+-export { DEFAULT_BUSY_ENTER_BEHAVIOR } from '../../submission-settings.ts'
++export { DEFAULT_BUSY_ENTER_BEHAVIOR, DEFAULT_MERGE_PENDING } from '../../submission-settings.ts'
+ 
+ /**
+  * Resolve one submission gesture against the busy-Enter preference. Plain
+@@ -46,6 +48,8 @@ export function resolveSubmitMode(
+ export class ComposerSubmissionPolicy {
+   /** Reactive preference source for the composer bar and the Settings row. */
+   readonly busyEnter: SnapshotStore<BusyEnterBehavior> = createSnapshotStore(DEFAULT_BUSY_ENTER_BEHAVIOR)
++  /** Reactive pending-queue merge source for the composer bar's merge switch. */
++  readonly mergePending: SnapshotStore<boolean> = createSnapshotStore(DEFAULT_MERGE_PENDING)
+   private readonly unsubscribe: (() => void) | undefined
+   private readonly host: ConfigForm<ConversationSettings> | undefined
+ 
+@@ -75,12 +79,29 @@ export class ComposerSubmissionPolicy {
+   }
+ 
+   /**
+-   * Adopt the scope's accepted durable behavior without writing it back.
++   * Change the pending-queue merge preference; the live value publishes
++   * before the durable write starts.
++   * @param enabled - merge or keep queued submissions independent.
++   */
++  setMergePending(enabled: boolean): void {
++    if (this.mergePending.getSnapshot() === enabled) return
++    this.mergePending.set(enabled)
++    void this.host?.set(MERGE_PENDING_FIELD, enabled)
++  }
++
++  /**
++   * Adopt the scope's accepted durable preferences without writing them back.
+    * @param host - the constructor-narrowed scope driving this adoption.
+    */
+   private adopt(host: ConfigForm<ConversationSettings>): void {
+     const section = host.getSnapshot().value
+-    if (section === undefined || this.busyEnter.getSnapshot() === section.busyEnter) return
+-    this.busyEnter.set(section.busyEnter)
++    if (section === undefined) return
++    if (this.busyEnter.getSnapshot() !== section.busyEnter) this.busyEnter.set(section.busyEnter)
++    // A Host schema that predates the field strips it on read; keep the
++    // live default rather than adopting an absent value as disabled.
++    if (typeof section.mergePending === 'boolean'
++      && this.mergePending.getSnapshot() !== section.mergePending) {
++      this.mergePending.set(section.mergePending)
++    }
+   }
+ }
+diff --git a/packages/client/ui-conversation/src/client/locales.ts b/packages/client/ui-conversation/src/client/locales.ts
+index 5f978ed0c8..5d13bf63b2 100644
+--- a/packages/client/ui-conversation/src/client/locales.ts
++++ b/packages/client/ui-conversation/src/client/locales.ts
+@@ -28,6 +28,7 @@ export const zh = {
+   'input.stop': '停止生成',
+   'input.send': '发送消息',
+   'input.send.queue': '排队发送',
++  'input.mergePending': '合并排队消息',
+   'input.send.steer': '插话发送',
+   'attachment.pending': '待发送附件',
+   'attachment.scrollLeft': '向左滚动附件',
+@@ -404,6 +405,7 @@ export const en = {
+   'input.stop': 'Stop generating',
+   'input.send': 'Send message',
+   'input.send.queue': 'Queue message',
++  'input.mergePending': 'Merge queued messages',
+   'input.send.steer': 'Steer message',
+   'attachment.pending': 'Pending attachments',
+   'attachment.scrollLeft': 'Scroll attachments left',
+diff --git a/packages/client/ui-conversation/src/client/service.ts b/packages/client/ui-conversation/src/client/service.ts
+index 2ef2309ccf..4ceef6c9fc 100644
+--- a/packages/client/ui-conversation/src/client/service.ts
++++ b/packages/client/ui-conversation/src/client/service.ts
+@@ -31,6 +31,22 @@ import type {
+   DraftAttachmentId, DraftAttachmentSerializationResult, SessionInputResolver, SubmitAttachment, SubmitOutcome,
+ } from './contract/input.ts'
+ import type { InputSubmitMode } from './contract/composer-submission.ts'
++import type { InboxState } from '@deepseek-ai/dsh-agent/types'
++import type { UserMessage } from '@deepseek-ai/dsh-llm/types'
++
++/**
++ * The text of a queued row that a text-only queue edit can represent: all of
++ * its content must be text blocks. Undefined for empty rows and for any row
++ * carrying an image, file, or other block the edit verb cannot express.
++ * @param row - one pending next-turn inbox row.
++ * @returns the joined row text, or undefined when the row is not text-only.
++ */
++function queuedText(row: UserMessage): string | undefined {
++  if (row.content.length === 0) return undefined
++  const texts = row.content.filter(block => block.type === 'text')
++  if (texts.length !== row.content.length) return undefined
++  return texts.map(block => block.text).join('\n\n')
++}
+ 
+ /**
+  * The outward conversation face (`ctx.conversation`): the scope-addressed
+@@ -169,23 +185,27 @@ export class ConversationController extends Service implements IConversation {
+   }> = []
+   private activeFileUploads = 0
+   private readonly maxConcurrentFileUploads: number
++  /** Live pending-queue merge preference (composer policy source of truth). */
++  private readonly mergePending: () => boolean
+ 
+   /**
+    * @param ctx - owning root context (the plugin apply context; the service
+    * registers itself and follows that fiber's lifetime).
+    * @param config - carries the SessionInputResolver and composer-block registry
+    * constructed by the plugin apply (the same instances the slot inject
+-   * factories close over).
++   * factories close over) plus the live merge preference source.
+    */
+   constructor(ctx: Context, config: {
+     input: SessionInputResolver
+     blocks: ComposerBlocks
+     maxConcurrentFileUploads: number
++    mergePending: () => boolean
+   }) {
+     super(ctx, 'conversation')
+     this.input = config.input
+     this.blocks = config.blocks
+     this.maxConcurrentFileUploads = config.maxConcurrentFileUploads
++    this.mergePending = config.mergePending
+     ctx.effect(() => async () => {
+       const operations = [...this.fileUploadOperations.values()]
+       for (const operation of operations) operation.controller.abort()
+@@ -268,6 +288,14 @@ export class ConversationController extends Service implements IConversation {
+       const result = await session.prompt(content, mode, signal)
+       return result.ok ? { kind: 'success' } : { kind: 'error' }
+     }
++    // Merge-into-pending: a queue-mode text-only send while a queued row is
++    // still pending grows the newest row instead of adding a separate turn.
++    // The Host edit is text-only by contract, so an attachment on either
++    // side (the draft's or the target row's) keeps the independent queue path.
++    if (mode === 'queue' && attachmentIds.length === 0 && this.mergePending()) {
++      const merged = await this.mergeIntoQueue(session, text)
++      if (merged !== undefined) return merged
++    }
+     let finishRetirement: ((retirement: PendingSubmissionRetirement) => void) | undefined
+     const retirement = attachments.length === 0
+       ? undefined
+@@ -296,6 +324,40 @@ export class ConversationController extends Service implements IConversation {
+     return { kind: 'success' }
+   }
+ 
++  /**
++   * Merge one plain queue-mode submission into the newest still-pending
++   * queued row: the row the new turn would sit behind grows instead. A
++   * pending-submission echo is NOT registered for a merge — the message
++   * lands on the existing row's identity, and a stuck echo would outlive
++   * it. Returns undefined when no merge applies (no pending row, or a row
++   * the text-only edit cannot represent) or the row was claimed in the
++   * merge window, so the caller keeps the independent queue path.
++   * @param session - target session.
++   * @param text - serialized prompt text.
++   * @returns the merge outcome, or undefined to fall through to a prompt.
++   */
++  private async mergeIntoQueue(
++    session: SessionFace,
++    text: string,
++  ): Promise<SubmitOutcome | undefined> {
++    // Queue rows live in the session's Agent Inbox projection (the durable
++    // next-turn list); the snapshot no longer carries them.
++    const inbox = session.projections.faceOf('inbox').getSnapshot() as InboxState | undefined
++    const queued = inbox?.['next-turn']
++    const target = queued === undefined || queued.length === 0 ? undefined : queued[queued.length - 1]
++    const baseText = target === undefined ? undefined : queuedText(target)
++    if (target === undefined || baseText === undefined) return undefined
++    const result = await session.updateQueue(target.id, {
++      kind: 'edit',
++      content: [{ type: 'text' as const, text: `${baseText}\n\n${text}` }],
++    })
++    if (result.ok) return { kind: 'success' }
++    // Claimed mid-merge: the turn the row fed just started, so the send
++    // takes the ordinary queue path instead of dropping the message.
++    if (result.error.code === 'session/queue-item-not-found') return undefined
++    throw new Error(`conversation.mergeQueue failed: ${result.error.code}: ${result.error.message}`)
++  }
++
+   /**
+    * Create runtime-only draft attachments. Files whose browser MIME is an
+    * accepted image type become image drafts (object URL preview, bytes sent
+diff --git a/packages/client/ui-conversation/src/client/skeleton/InputBar.module.css b/packages/client/ui-conversation/src/client/skeleton/InputBar.module.css
+index 4676f4cd7d..e645f3571a 100644
+--- a/packages/client/ui-conversation/src/client/skeleton/InputBar.module.css
++++ b/packages/client/ui-conversation/src/client/skeleton/InputBar.module.css
+@@ -334,6 +334,43 @@
+   cursor: default;
+ }
+ 
++/* Pending-queue merge switch: same 28px seat and hover contract as the
++   attach chip, but transparent at rest (it is a preference, not an action)
++   and business-blue when on. */
++.merge {
++  display: grid;
++  place-items: center;
++  flex: none;
++  width: 28px;
++  height: 28px;
++  border: none;
++  border-radius: 999px;
++  corner-shape: round;
++  background: transparent;
++  color: var(--dsw-alias-label-secondary);
++  cursor: pointer;
++  transition: background-color 100ms ease, color 100ms ease;
++}
++
++.merge:hover:not(:disabled) {
++  background: var(--dsw-alias-interactive-bg-hover-solid);
++  color: var(--dsw-alias-label-primary);
++}
++
++.merge:disabled {
++  opacity: 0.5;
++  cursor: default;
++}
++
++.mergeOn {
++  background: var(--dsw-alias-interactive-bg-hover-accent);
++  color: var(--dsw-alias-state-business-primary);
++}
++
++.mergeOn:hover:not(:disabled) {
++  background: var(--dsw-alias-interactive-bg-hover-solid);
++}
++
+ /* Plan / Read-only / model — native <select>, chip-like closed chrome
+    (figma ToggleButton: 13/20 medium secondary, 12px chevron). */
+ .select {
+diff --git a/packages/client/ui-conversation/src/client/skeleton/InputBar.tsx b/packages/client/ui-conversation/src/client/skeleton/InputBar.tsx
+index 031413132b..6432363529 100644
+--- a/packages/client/ui-conversation/src/client/skeleton/InputBar.tsx
++++ b/packages/client/ui-conversation/src/client/skeleton/InputBar.tsx
+@@ -45,8 +45,8 @@ export type InputBarProps = ComposerBarProps
+ export const InputBar = memo(function InputBar({
+   useSession, useInput, inputActions, keyboard, addFiles, removeAttachment, resolveDraftAttachments,
+   retryFileUpload,
+-  toggleCommandMenu, stop, t,
+-  renderSlot, useBusyEnter, useFileUploads, useNotices, useLexicon, useMenuLauncher, useStopShortcut,
++  toggleCommandMenu, stop, setMergePending, t,
++  renderSlot, useBusyEnter, useMergePending, useFileUploads, useNotices, useLexicon, useMenuLauncher, useStopShortcut,
+   useProjection, sessionId, variant, disabled: inert = false, blocked,
+   workspacePickerOpen = false, onRequestWorkspace,
+   placeholder, accessory,
+@@ -55,6 +55,10 @@ export const InputBar = memo(function InputBar({
+   const notice = useNotices(s => s)
+   const busyEnter = useBusyEnter(s => s)
+   const stopKeys = useStopShortcut(keys => keys)
++  // Pending-queue merge preference: queue-mode sends grow the newest queued
++  // row instead of adding turns (the service owns the merge decision; the
++  // switch only sets and displays the live value).
++  const mergePending = useMergePending(s => s)
+   void useLexicon // hook seat stays bound by the inject compartment; text-ref decoration rides the shell's editor transforms
+   const commandMenuOpen = useMenuLauncher(source => source === 'command')
+   const [activity, setActivity] = useState(false)
+@@ -454,6 +458,25 @@ export const InputBar = memo(function InputBar({
+                 : renderSlot('conversation.input.right', {})}
+               {sessionId === undefined ? null : renderSlot('conversation.input.model', { locked: modelSeatLocked })}
+             </div>
++            {input === undefined || sessionId === undefined ? null : (
++              <Tooltip label={t('input.mergePending')} side="top" delayMs={500}>
++                <button
++                  type="button"
++                  className={mergePending ? clsx(css.merge, css.mergeOn) : css.merge}
++                  aria-label={t('input.mergePending')}
++                  aria-pressed={mergePending}
++                  disabled={locked || setMergePending === undefined}
++                  onMouseDown={keepFocus}
++                  onClick={() => { setMergePending?.(!mergePending) }}
++                >
++                  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
++                    <path d="M2.5 3.5h4q4.5 0 5 4.5" />
++                    <path d="M2.5 12.5h4q4.5 0 5-4.5" />
++                    <path d="M11.5 8h3" />
++                  </svg>
++                </button>
++              </Tooltip>
++            )}
+             {input === undefined || sessionId === undefined ? null : <div className={activity ? css.activityExpanded : css.activity}>
+               {renderSlot('conversation.input.activity', { locked, onActiveChange: setActivity })}
+             </div>}
+diff --git a/packages/client/ui-conversation/src/index.ts b/packages/client/ui-conversation/src/index.ts
+index afb38b5fe0..a72ef49943 100644
+--- a/packages/client/ui-conversation/src/index.ts
++++ b/packages/client/ui-conversation/src/index.ts
+@@ -10,7 +10,8 @@ import { ConversationSettingsFields } from './submission-settings.ts'
+ 
+ export {
+   BUSY_ENTER_BEHAVIORS, BUSY_ENTER_FIELD, CONVERSATION_SETTINGS_NAMESPACE,
+-  DEFAULT_BUSY_ENTER_BEHAVIOR, type BusyEnterBehavior, type ConversationSettings,
++  DEFAULT_BUSY_ENTER_BEHAVIOR, DEFAULT_MERGE_PENDING, MERGE_PENDING_FIELD,
++  type BusyEnterBehavior, type ConversationSettings,
+ } from './submission-settings.ts'
+ 
+ /** Runtime preferences projected to the browser. */
+diff --git a/packages/client/ui-conversation/src/submission-settings.ts b/packages/client/ui-conversation/src/submission-settings.ts
+index 2b95435480..c0d61a39b0 100644
+--- a/packages/client/ui-conversation/src/submission-settings.ts
++++ b/packages/client/ui-conversation/src/submission-settings.ts
+@@ -8,6 +8,9 @@ export const CONVERSATION_SETTINGS_NAMESPACE = 'ui-conversation'
+ /** Field carrying the delivery mode for plain Enter while an agent is busy. */
+ export const BUSY_ENTER_FIELD = 'busyEnter'
+ 
++/** Field carrying the pending-queue merge preference. */
++export const MERGE_PENDING_FIELD = 'mergePending'
++
+ /** Busy-Enter behaviors accepted at settings and input boundaries. */
+ export const BUSY_ENTER_BEHAVIORS = ['queue', 'steer'] as const
+ 
+@@ -17,15 +20,25 @@ export type BusyEnterBehavior = typeof BUSY_ENTER_BEHAVIORS[number]
+ /** Default preserves Enter-as-Queue for running conversations. */
+ export const DEFAULT_BUSY_ENTER_BEHAVIOR: BusyEnterBehavior = 'queue'
+ 
++/** Default merges busy-state queue submissions into one pending message. */
++export const DEFAULT_MERGE_PENDING = true
++
+ /** Durable conversation section shared by the Host schema and the browser scope. */
+ export interface ConversationSettings {
+   /** Delivery mode for plain Enter while the addressed agent is busy. */
+   busyEnter: BusyEnterBehavior
++  /**
++   * While the addressed agent is busy, merge a queued plain-message
++   * submission into the newest still-pending queued row instead of adding
++   * a separate turn (text-only submissions and text-only queued rows).
++   */
++  mergePending: boolean
+ }
+ 
+ /** Durable conversation schema; also the wire envelope the browser scope validates against. */
+ export const ConversationSettingsFields = {
+   [BUSY_ENTER_FIELD]: z.union([...BUSY_ENTER_BEHAVIORS]).default(DEFAULT_BUSY_ENTER_BEHAVIOR),
++  [MERGE_PENDING_FIELD]: z.boolean().default(DEFAULT_MERGE_PENDING),
+ }
+ 
+ /** Schema for shared configuration values. */
+diff --git a/packages/client/ui-conversation/tests/config.host.spec.ts b/packages/client/ui-conversation/tests/config.host.spec.ts
+index cb047da964..7d3fbfb9ba 100644
+--- a/packages/client/ui-conversation/tests/config.host.spec.ts
++++ b/packages/client/ui-conversation/tests/config.host.spec.ts
+@@ -4,7 +4,7 @@ import * as HostPlugin from '../src/index.ts'
+ import { liveConfig, omitsGeneratedPage } from '../../../settings/settings/tests/live-config.ts'
+ import { plainConfig } from '../../../settings/settings/src/schema.ts'
+ import {
+-  DEFAULT_BUSY_ENTER_BEHAVIOR, Config, apply,
++  DEFAULT_BUSY_ENTER_BEHAVIOR, DEFAULT_MERGE_PENDING, Config, apply,
+ } from '@deepseek-ai/dsh-client-ui-conversation'
+ 
+ 
+@@ -13,9 +13,14 @@ describe('ui-conversation host', () => {
+     const ctx = new Context()
+     const configuration = await liveConfig(ctx, { Config, apply })
+     const { fiber } = configuration
+-    expect(plainConfig(configuration.fiber.config)).toEqual({ busyEnter: DEFAULT_BUSY_ENTER_BEHAVIOR })
++    expect(plainConfig(configuration.fiber.config)).toEqual({
++      busyEnter: DEFAULT_BUSY_ENTER_BEHAVIOR, mergePending: DEFAULT_MERGE_PENDING,
++    })
+     await configuration.update({ busyEnter: 'steer' })
+-    expect(plainConfig(configuration.fiber.config)).toEqual({ busyEnter: 'steer' })
++    expect(plainConfig(configuration.fiber.config)).toEqual({ busyEnter: 'steer', mergePending: DEFAULT_MERGE_PENDING })
++    await configuration.update({ mergePending: false })
++    expect(plainConfig(configuration.fiber.config)).toEqual({ busyEnter: 'steer', mergePending: false })
++    await expect(configuration.update({ mergePending: 'nope' })).rejects.toThrow()
+     await expect(configuration.update({ busyEnter: 'invalid' })).rejects.toThrow()
+     await fiber.dispose()
+   })
+diff --git a/packages/client/ui-conversation/tests/input-bar.client.spec.tsx b/packages/client/ui-conversation/tests/input-bar.client.spec.tsx
+index 3b025155eb..1175a03178 100644
+--- a/packages/client/ui-conversation/tests/input-bar.client.spec.tsx
++++ b/packages/client/ui-conversation/tests/input-bar.client.spec.tsx
+@@ -103,6 +103,8 @@ interface BenchOptions {
+   addFiles?: (files: readonly File[], directories?: ReadonlySet<File>) => string | null
+   commandMenuOpen?: boolean
+   busyEnter?: 'queue' | 'steer'
++  /** Live pending-queue merge preference (absent = default on). */
++  mergePending?: boolean
+   toggleCommandMenu?: (selection: { start: number; end: number }) => void
+ }
+ 
+@@ -157,6 +159,8 @@ function bench(over?: BenchOptions) {
+   const menuLauncher = createSnapshotStore<string | null>(over?.commandMenuOpen === true ? 'command' : null)
+   const busyEnter = createSnapshotStore<'queue' | 'steer'>(over?.busyEnter ?? 'queue')
+   const stopShortcut = createSnapshotStore<readonly string[]>(['Esc', 'Esc'])
++  const mergePending = createSnapshotStore<boolean>(over?.mergePending ?? true)
++  const setMergePending = vi.fn((next: boolean) => { mergePending.set(next) })
+   const slotCalls: { key: string; owner: unknown }[] = []
+   const renderSlot = ((key: string, owner: object) => {
+     slotCalls.push({ key, owner })
+@@ -206,6 +210,8 @@ function bench(over?: BenchOptions) {
+     toggleCommandMenu: over?.toggleCommandMenu ?? vi.fn(),
+     useBusyEnter: bindSnapshotSelector(busyEnter),
+     useStopShortcut: bindSnapshotSelector(stopShortcut),
++    useMergePending: bindSnapshotSelector(mergePending),
++    setMergePending,
+     useNotices: bindSnapshotSelector(shell.notices),
+     useLexicon: bindSnapshotSelector(shell.lexicon),
+     useMenuLauncher: bindSnapshotSelector(menuLauncher),
+@@ -248,7 +254,7 @@ function bench(over?: BenchOptions) {
+   const interruptButton = view.container.querySelector<HTMLButtonElement>('button[aria-label="停止生成"]')
+   return {
+     view, textarea, button, interruptButton, props, sink, shell, wiring: shell, session, stop, removeAttachment, slotCalls,
+-    menuLauncher, busyEnter, stopShortcut,
++    menuLauncher, busyEnter, stopShortcut, mergePending, setMergePending,
+     steerQueue: over?.steerQueue,
+     get placeholder() { return placeholderOf(view.container) },
+     get inputDisabled() { return textarea.getAttribute('aria-disabled') === 'true' },
+@@ -1777,3 +1783,33 @@ it('places context usage below the composer and hides it until the activity clos
+   expect(view.getByRole('dialog', { name: '上下文已用' })).toBeTruthy()
+   expect(view.getByRole('button', { name: '发送消息' })).toBeTruthy()
+ })
++
++describe('pending-queue merge switch', () => {
++  it('renders on by default and toggles the live preference through the setter', () => {
++    const { view, mergePending, setMergePending } = bench()
++    const toggle = view.getByLabelText('合并排队消息') as HTMLButtonElement
++    expect(toggle.getAttribute('aria-pressed')).toBe('true')
++    expect(mergePending.getSnapshot()).toBe(true)
++    fireEvent.click(toggle)
++    expect(setMergePending).toHaveBeenCalledWith(false)
++    expect(mergePending.getSnapshot()).toBe(false)
++    expect((view.getByLabelText('合并排队消息') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('false')
++  })
++
++  it('reflects an inherited off preference and can be turned back on', () => {
++    const { view, mergePending } = bench({ mergePending: false })
++    expect((view.getByLabelText('合并排队消息') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('false')
++    expect(mergePending.getSnapshot()).toBe(false)
++    fireEvent.click(view.getByLabelText('合并排队消息'))
++    expect(mergePending.getSnapshot()).toBe(true)
++  })
++
++  it('is locked (disabled) when the bar is inert or blocked', () => {
++    const { view } = bench({ inert: true })
++    expect((view.getByLabelText('合并排队消息') as HTMLButtonElement).disabled).toBe(true)
++    cleanup()
++    const blocked = bench({ blocked: { reason: 'x' } })
++    expect((blocked.view.getByLabelText('合并排队消息') as HTMLButtonElement).disabled).toBe(true)
++  })
++
++})
+diff --git a/packages/client/ui-conversation/tests/input-matrix.client.spec.tsx b/packages/client/ui-conversation/tests/input-matrix.client.spec.tsx
+index e7c997cb61..f8682e8d8e 100644
+--- a/packages/client/ui-conversation/tests/input-matrix.client.spec.tsx
++++ b/packages/client/ui-conversation/tests/input-matrix.client.spec.tsx
+@@ -84,6 +84,8 @@ function mountBar(shell: SessionInputShell, over?: { running?: boolean; disabled
+     toggleCommandMenu: vi.fn(),
+     useBusyEnter: bindSnapshotSelector(createSnapshotStore<'queue' | 'steer'>('queue')),
+     useStopShortcut: bindSnapshotSelector(createSnapshotStore<readonly string[]>([])),
++    useMergePending: bindSnapshotSelector(createSnapshotStore<boolean>(true)),
++    setMergePending: vi.fn(),
+     useNotices: bindSnapshotSelector(shell.notices),
+     useLexicon: bindSnapshotSelector(shell.lexicon),
+     useMenuLauncher: bindSnapshotSelector(createSnapshotStore<string | null>(null)),
+diff --git a/packages/client/ui-conversation/tests/input-scenarios.client.spec.tsx b/packages/client/ui-conversation/tests/input-scenarios.client.spec.tsx
+index d3993c70df..d998e8f1f3 100644
+--- a/packages/client/ui-conversation/tests/input-scenarios.client.spec.tsx
++++ b/packages/client/ui-conversation/tests/input-scenarios.client.spec.tsx
+@@ -180,6 +180,8 @@ async function scopedBench(register?: (inputTriggers: InputTriggerService) => vo
+       previewUrl: `blob:${id}`,
+     })),
+     useBusyEnter: bindSnapshotSelector(createSnapshotStore<'queue' | 'steer'>('queue')),
++    useMergePending: bindSnapshotSelector(createSnapshotStore<boolean>(true)),
++    setMergePending: vi.fn(),
+     toggleCommandMenu: (selection) => {
+       const snapshot = shell.snapshot
+       controller.toggleSource('command', {
+diff --git a/packages/client/ui-conversation/tests/service-orchestration.client.spec.ts b/packages/client/ui-conversation/tests/service-orchestration.client.spec.ts
+index 6665284ae4..4451fe4604 100644
+--- a/packages/client/ui-conversation/tests/service-orchestration.client.spec.ts
++++ b/packages/client/ui-conversation/tests/service-orchestration.client.spec.ts
+@@ -17,7 +17,7 @@ import { InputHub } from '../src/client/input/hub.ts'
+ import { ConversationController } from '../src/client/service.ts'
+ import { zh } from '../src/client/locales.ts'
+ 
+-async function bench(maxConcurrentFileUploads = 2) {
++async function bench(maxConcurrentFileUploads = 2, mergePending = true) {
+   const runtime = await SlotTestRuntime.create()
+   runtime.fileUpload.upload = (sessionId: SessionId, ...args: unknown[]) => {
+     const session = runtime.sessions.behavior(sessionId) as {
+@@ -45,6 +45,7 @@ async function bench(maxConcurrentFileUploads = 2) {
+     input: hub,
+     blocks: new ComposerBlockRegistry(),
+     maxConcurrentFileUploads,
++    mergePending: () => mergePending,
+   })
+   await fiber.await()
+   const root = runtime.ctx.get('conversation') as ConversationController
+@@ -480,6 +481,7 @@ describe('ConversationController', () => {
+       input: new InputHub(bare, makeTranslate(zh, {})),
+       blocks: new ComposerBlockRegistry(),
+       maxConcurrentFileUploads: 2,
++      mergePending: () => true,
+     }).await()
+     const orphan = bare.get('conversation') as ConversationController
+     await expect(orphan.send('x')).rejects.toThrow(/sessions service unavailable/)
+@@ -912,3 +914,96 @@ it.each([
+     expect(track).toHaveBeenCalledExactlyOnceWith('send_button_click', { run_mode: 'default', msg_type: expected }, expect.any(Number))
+   } finally { await b.runtime.dispose() }
+ })
++
++describe('sendSession pending-queue merge (mergePending)', () => {
++  const row = (id: string, text: string): UserMessage => ({
++    id: id as never,
++    role: 'user',
++    source: { kind: 'user' },
++    content: [{ type: 'text', text }],
++  })
++  const imageRow = (id: string): UserMessage => ({
++    id: id as never,
++    role: 'user',
++    source: { kind: 'user' },
++    content: [{
++      type: 'image',
++      attachment: {
++        attachmentId: 'sha256:x' as never, mediaType: 'image/png', bytes: 1, width: 1, height: 1,
++      },
++    }],
++  })
++
++  it('merges a text-only queue send into the newest queued row', async () => {
++    const b = await bench()
++    const session = b.runtime.sessions.binding('s1')!.session
++    await b.runtime.sessions.setProjection('s1', 'inbox', { 'next-turn': [row('q-1', 'first'), row('q-2', 'second')], 'next-step': [] })
++    await expect(b.root.sendSession(session, 'third', [], 'queue')).resolves.toEqual({ kind: 'success' })
++    expect(b.updateQueue).toHaveBeenCalledTimes(1)
++    expect(b.updateQueue).toHaveBeenCalledWith('q-2', {
++      kind: 'edit',
++      content: [{ type: 'text', text: 'second\n\nthird' }],
++    })
++    expect(b.prompt).not.toHaveBeenCalled()
++    await b.runtime.dispose()
++  })
++
++  it('keeps the queue path when the merge is disabled', async () => {
++    const b = await bench(2, false)
++    const session = b.runtime.sessions.binding('s1')!.session
++    await b.runtime.sessions.setProjection('s1', 'inbox', { 'next-turn': [row('q-1', 'first')], 'next-step': [] })
++    await expect(b.root.sendSession(session, 'second', [], 'queue')).resolves.toEqual({ kind: 'success' })
++    expect(b.updateQueue).not.toHaveBeenCalled()
++    expect(b.prompt).toHaveBeenCalledOnce()
++    await b.runtime.dispose()
++  })
++
++  it('keeps the queue path for attachment sends and non-text rows', async () => {
++    const b = await bench()
++    const session = b.runtime.sessions.binding('s1')!.session
++    // An image row cannot be represented by the text-only edit.
++    await b.runtime.sessions.setProjection('s1', 'inbox', { 'next-turn': [imageRow('q-img')], 'next-step': [] })
++    await expect(b.root.sendSession(session, 'text', [], 'queue')).resolves.toEqual({ kind: 'success' })
++    expect(b.updateQueue).not.toHaveBeenCalled()
++    expect(b.prompt).toHaveBeenCalledOnce()
++    await b.runtime.dispose()
++  })
++
++  it('ignores steering and context rows when choosing a merge target', async () => {
++    const b = await bench()
++    const session = b.runtime.sessions.binding('s1')!.session
++    // Next-step (steering/context) rows never merge: with no next-turn row
++    // the send takes the plain queue path.
++    await b.runtime.sessions.setProjection('s1', 'inbox', { 'next-turn': [], 'next-step': [row('q-steer', 'steer'), row('q-ctx', 'ctx')] })
++    await expect(b.root.sendSession(session, 'plain', [], 'queue')).resolves.toEqual({ kind: 'success' })
++    expect(b.updateQueue).not.toHaveBeenCalled()
++    expect(b.prompt).toHaveBeenCalledOnce()
++    await b.runtime.dispose()
++  })
++
++  it('falls back to a plain prompt when the target row is claimed mid-merge', async () => {
++    const b = await bench()
++    const session = b.runtime.sessions.binding('s1')!.session
++    await b.runtime.sessions.setProjection('s1', 'inbox', { 'next-turn': [row('q-1', 'first')], 'next-step': [] })
++    b.updateQueue.mockResolvedValueOnce({
++      ok: false, error: new RemoteError('session/queue-item-not-found', 'claimed', { itemId: 'q-1' as never }),
++    } as never)
++    await expect(b.root.sendSession(session, 'second', [], 'queue')).resolves.toEqual({ kind: 'success' })
++    expect(b.updateQueue).toHaveBeenCalledOnce()
++    expect(b.prompt).toHaveBeenCalledOnce()
++    await b.runtime.dispose()
++  })
++
++  it('rejects on a genuine merge failure so the draft can be restored', async () => {
++    const b = await bench()
++    const session = b.runtime.sessions.binding('s1')!.session
++    await b.runtime.sessions.setProjection('s1', 'inbox', { 'next-turn': [row('q-1', 'first')], 'next-step': [] })
++    b.updateQueue.mockResolvedValueOnce({
++      ok: false, error: new RemoteError('gateway/internal', 'broken', {}),
++    } as never)
++    await expect(b.root.sendSession(session, 'second', [], 'queue'))
++      .rejects.toThrow('conversation.mergeQueue failed: gateway/internal: broken')
++    expect(b.prompt).not.toHaveBeenCalled()
++    await b.runtime.dispose()
++  })
++})
+diff --git a/packages/client/ui-conversation/tests/skeleton.client.spec.tsx b/packages/client/ui-conversation/tests/skeleton.client.spec.tsx
+index 7f0225ff33..3104f39236 100644
+--- a/packages/client/ui-conversation/tests/skeleton.client.spec.tsx
++++ b/packages/client/ui-conversation/tests/skeleton.client.spec.tsx
+@@ -291,6 +291,8 @@ function mount(
+           toggleCommandMenu={vi.fn()}
+           useBusyEnter={bindSnapshotSelector(createSnapshotStore<'queue' | 'steer'>('queue'))}
+           useStopShortcut={bindSnapshotSelector(createSnapshotStore<readonly string[]>([]))}
++          useMergePending={bindSnapshotSelector(createSnapshotStore<boolean>(true))}
++          setMergePending={vi.fn()}
+           useNotices={bindSnapshotSelector(wiring.notices)}
+           useLexicon={bindSnapshotSelector(wiring.lexicon)}
+           useMenuLauncher={bindSnapshotSelector(createSnapshotStore<string | null>(null))}
+diff --git a/packages/client/ui-conversation/tests/stop-shortcut.client.spec.ts b/packages/client/ui-conversation/tests/stop-shortcut.client.spec.ts
+index 990c543da5..0aee284a96 100644
+--- a/packages/client/ui-conversation/tests/stop-shortcut.client.spec.ts
++++ b/packages/client/ui-conversation/tests/stop-shortcut.client.spec.ts
+@@ -31,6 +31,7 @@ async function bench() {
+   const hub = new InputHub(runtime.ctx, makeTranslate(zh, {}))
+   const fiber = runtime.ctx.plugin(ConversationController, {
+     input: hub, blocks: new ComposerBlockRegistry(), maxConcurrentFileUploads: 2,
++    mergePending: () => true,
+   })
+   await fiber.await()
+   const conversation = new UiConversation(runtime.ctx, runtime.sessions)
+diff --git a/packages/client/ui-conversation/tests/submission-policy.client.spec.ts b/packages/client/ui-conversation/tests/submission-policy.client.spec.ts
+index 4ea3410874..332ea3e61c 100644
+--- a/packages/client/ui-conversation/tests/submission-policy.client.spec.ts
++++ b/packages/client/ui-conversation/tests/submission-policy.client.spec.ts
+@@ -57,18 +57,59 @@ describe('ComposerSubmissionPolicy', () => {
+   it('adopts a Host preference without writing it back and leaves an identical write untouched', () => {
+     const host = stubConfigForm<ConversationSettings>()
+     const policy = new ComposerSubmissionPolicy(host.scope)
+-    host.publish({ status: 'ready', value: { busyEnter: 'steer' }, revision: 1, writable: true })
++    host.publish({ status: 'ready', value: { busyEnter: 'steer', mergePending: true }, revision: 1, writable: true })
+     expect(policy.busyEnter.getSnapshot()).toBe('steer')
+     policy.setBusyEnter('steer')
+     expect(host.set).not.toHaveBeenCalled()
+-    host.publish({ value: { busyEnter: 'steer' }, revision: 2 })
++    host.publish({ value: { busyEnter: 'steer', mergePending: true }, revision: 2 })
+     expect(policy.busyEnter.getSnapshot()).toBe('steer')
+   })
+ 
+   it('adopts a section already standing at construction', () => {
+     const host = stubConfigForm<ConversationSettings>()
+-    host.publish({ status: 'ready', value: { busyEnter: 'steer' }, revision: 1, writable: true })
++    host.publish({ status: 'ready', value: { busyEnter: 'steer', mergePending: true }, revision: 1, writable: true })
+     const policy = new ComposerSubmissionPolicy(host.scope)
+     expect(policy.busyEnter.getSnapshot()).toBe('steer')
+   })
++
++  it('defaults mergePending to on and publishes preference changes', () => {
++    const policy = new ComposerSubmissionPolicy()
++    expect(policy.mergePending.getSnapshot()).toBe(true)
++
++    const changed = vi.fn()
++    policy.mergePending.subscribe(changed)
++    policy.setMergePending(false)
++    expect(changed).toHaveBeenCalledTimes(1)
++    expect(policy.mergePending.getSnapshot()).toBe(false)
++    policy.setMergePending(false)
++    expect(changed).toHaveBeenCalledTimes(1)
++  })
++
++  it('writes a mergePending change through the scope after publishing it locally', () => {
++    const host = stubConfigForm<ConversationSettings>()
++    const policy = new ComposerSubmissionPolicy(host.scope)
++    policy.setMergePending(false)
++    expect(host.set).toHaveBeenCalledWith('mergePending', false)
++    expect(host.set).toHaveBeenCalledOnce()
++  })
++
++  it('adopts a Host mergePending value, both at construction and on publish', () => {
++    const host = stubConfigForm<ConversationSettings>()
++    const policy = new ComposerSubmissionPolicy(host.scope)
++    host.publish({ status: 'ready', value: { busyEnter: 'queue', mergePending: false }, revision: 1, writable: true })
++    expect(policy.mergePending.getSnapshot()).toBe(false)
++    host.publish({ status: 'ready', value: { busyEnter: 'queue', mergePending: true }, revision: 2, writable: true })
++    expect(policy.mergePending.getSnapshot()).toBe(true)
++  })
++
++  it('keeps the live mergePending default when a pre-field Host schema strips it', () => {
++    const host = stubConfigForm<ConversationSettings>()
++    const policy = new ComposerSubmissionPolicy(host.scope)
++    policy.setMergePending(false)
++    host.publish({ status: 'ready', value: { busyEnter: 'queue' } as ConversationSettings, revision: 1, writable: true })
++    expect(policy.mergePending.getSnapshot()).toBe(false)
++    const late = new ComposerSubmissionPolicy(host.scope)
++    host.publish({ status: 'ready', value: { busyEnter: 'queue' } as ConversationSettings, revision: 2, writable: true })
++    expect(late.mergePending.getSnapshot()).toBe(true)
++  })
+ })

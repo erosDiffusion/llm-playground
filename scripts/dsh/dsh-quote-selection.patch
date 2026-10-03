@@ -1,0 +1,1990 @@
+diff --git a/packages/bundle/web-app/cordis.patch.yml b/packages/bundle/web-app/cordis.patch.yml
+index a452579e9d..5e7dfd92a6 100644
+--- a/packages/bundle/web-app/cordis.patch.yml
++++ b/packages/bundle/web-app/cordis.patch.yml
+@@ -399,6 +399,13 @@
+     - id: ui-message-feedback
+       name: '@deepseek-ai/dsh-client-ui-message-feedback'
+ 
++    # The quote surface: a quote action in the assistant-message action strip
++    # that opens a dialog quoting the step's text with turn/step/timestamp
++    # context; Send submits quote + comment + existing draft, To composer
++    # stages the same text.
++    - id: ui-quote
++      name: '@deepseek-ai/dsh-client-ui-quote'
++
+     # Model selection: the /model popupSelect + composer seat over session.models.
+     - id: ui-model-selection
+       name: '@deepseek-ai/dsh-client-ui-model-selection'
+diff --git a/packages/bundle/web-app/package.json b/packages/bundle/web-app/package.json
+index d71c50f66d..c00941645c 100644
+--- a/packages/bundle/web-app/package.json
++++ b/packages/bundle/web-app/package.json
+@@ -90,6 +90,7 @@
+     "@deepseek-ai/dsh-client-ui-permission-presets": "workspace:*",
+     "@deepseek-ai/dsh-client-ui-plan": "workspace:*",
+     "@deepseek-ai/dsh-client-ui-plugin-manager": "workspace:*",
++    "@deepseek-ai/dsh-client-ui-quote": "workspace:*",
+     "@deepseek-ai/dsh-client-ui-reference": "workspace:*",
+     "@deepseek-ai/dsh-client-ui-renderer": "workspace:*",
+     "@deepseek-ai/dsh-client-ui-session": "workspace:*",
+diff --git a/packages/client/ui-chat/src/client/chat/MessageIconActions.module.css b/packages/client/ui-chat/src/client/chat/MessageIconActions.module.css
+index 29c1c9e713..bedb74e09c 100644
+--- a/packages/client/ui-chat/src/client/chat/MessageIconActions.module.css
++++ b/packages/client/ui-chat/src/client/chat/MessageIconActions.module.css
+@@ -38,14 +38,18 @@
+ 
+ /* Earlier user-authored flow rows and opted-in turn tails reveal the complete
+    actions row on hover or focus-within. Opacity keeps layout stable, and
+-   devices without hover keep every row visible. */
++   devices without hover keep every row visible.
++   The hidden state owns the slow (400ms) fade-out: after the pointer leaves
++   the row, the strip lingers long enough to be reached — the row still hit-
++   tests while invisible (opacity never disables pointer events), so a pointer
++   that arrives during the grace re-triggers the fast 80ms fade-in. */
+ @media (hover: hover) {
+   [data-actions-reveal='hover'] .actions,
+   :is([data-chat-flow-kind='user'], [data-chat-flow-kind='steering']):has(
+     ~ :is([data-chat-flow-kind='user'], [data-chat-flow-kind='steering'])
+   ) .actions {
+     opacity: 0;
+-    transition: opacity 80ms ease;
++    transition: opacity 400ms ease;
+   }
+ 
+   [data-actions-reveal='hover']:hover .actions,
+@@ -57,6 +61,7 @@
+     ~ :is([data-chat-flow-kind='user'], [data-chat-flow-kind='steering'])
+   ):focus-within .actions {
+     opacity: 1;
++    transition: opacity 80ms ease;
+   }
+ }
+ 
+diff --git a/packages/client/ui-quote/package.json b/packages/client/ui-quote/package.json
+new file mode 100644
+index 0000000000..35e64fb295
+--- /dev/null
++++ b/packages/client/ui-quote/package.json
+@@ -0,0 +1,63 @@
++{
++  "name": "@deepseek-ai/dsh-client-ui-quote",
++  "description": "The Web quote surface: a hover quote action on assistant messages that opens a dialog quoting the step's text with turn/step/timestamp context, staging or sending it into the composer",
++  "version": "0.1.0-alpha.1",
++  "publishConfig": {
++    "access": "public"
++  },
++  "type": "module",
++  "main": "lib/index.js",
++  "types": "lib/types/index.d.ts",
++  "exports": {
++    ".": {
++      "types": "./lib/types/index.d.ts",
++      "default": "./lib/index.js"
++    },
++    "./client": {
++      "types": "./lib/types/client/index.d.ts",
++      "default": "./lib/client.js"
++    },
++    "./src/*": "./src/*",
++    "./package.json": "./package.json"
++  },
++  "dsh": {
++    "client": {
++      "inject": [
++        "@deepseek-ai/dsh-client-locale",
++        "@deepseek-ai/dsh-client-ui-conversation",
++        "@deepseek-ai/dsh-client-ui-renderer"
++      ],
++      "platform": "web"
++    }
++  },
++  "scripts": {
++    "bundle": "tsdown",
++    "watch": "tsdown --watch"
++  },
++  "license": "MIT",
++  "peerDependencies": {
++    "@deepseek-ai/cordis": "workspace:^"
++  },
++  "devDependencies": {
++    "@deepseek-ai/dsh-client-locale": "workspace:^",
++    "@deepseek-ai/dsh-client-store": "workspace:^",
++    "@deepseek-ai/dsh-client-test-runtime": "workspace:^",
++    "@deepseek-ai/dsh-client-ui-chat": "workspace:^",
++    "@deepseek-ai/dsh-client-ui-conversation": "workspace:^",
++    "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
++    "@deepseek-ai/dsh-client-ui-renderer": "workspace:^",
++    "@deepseek-ai/dsh-client-ui-slots": "workspace:^",
++    "@deepseek-ai/dsh-session": "workspace:^",
++    "@deepseek-ai/cordis": "workspace:^",
++    "@testing-library/react": "^16.1.0",
++    "@types/react": "~18.3.1",
++    "@types/react-dom": "~18.3.0",
++    "react": "^18.2.0",
++    "react-dom": "^18.2.0"
++  },
++  "files": [
++    "lib/index.js",
++    "lib/client.js",
++    "lib/types/**/*.d.ts"
++  ]
++}
+diff --git a/packages/client/ui-quote/src/client/actions.module.css b/packages/client/ui-quote/src/client/actions.module.css
+new file mode 100644
+index 0000000000..7d39ec52ec
+--- /dev/null
++++ b/packages/client/ui-quote/src/client/actions.module.css
+@@ -0,0 +1,37 @@
++/* One strip action, matching the MessageIconActions action geometry. */
++.action {
++  display: inline-flex;
++  align-items: center;
++  justify-content: center;
++  width: calc(28px + var(--dsh-content-font-delta, 0px));
++  height: calc(28px + var(--dsh-content-font-delta, 0px));
++  padding: 6px;
++  border: none;
++  border-radius: 28px;
++  background: transparent;
++  color: var(--dsw-alias-label-tertiary);
++  cursor: pointer;
++}
++
++/* The 15px glyph follows the same px delta as the text it serves;
++   the CSS edge overrides the svg's own width/height attributes. */
++.action svg {
++  width: calc(15px + var(--dsh-content-font-delta, 0px));
++  height: calc(15px + var(--dsh-content-font-delta, 0px));
++}
++
++.action:hover {
++  background: var(--dsw-alias-interactive-bg-hover);
++  color: var(--dsw-alias-label-secondary);
++}
++
++/* Unavailable stays focusable and hoverable so Tooltip can explain why. */
++.action[data-unavailable] {
++  cursor: default;
++  opacity: 0.4;
++}
++
++.action[data-unavailable]:hover {
++  background: transparent;
++  color: var(--dsw-alias-label-tertiary);
++}
+diff --git a/packages/client/ui-quote/src/client/actions.tsx b/packages/client/ui-quote/src/client/actions.tsx
+new file mode 100644
+index 0000000000..f9978d677c
+--- /dev/null
++++ b/packages/client/ui-quote/src/client/actions.tsx
+@@ -0,0 +1,114 @@
++/**
++ * The quote action entry: one hover-revealed icon in the assistant message
++ * action strip. The seat owner carries the durable message id; the entry
++ * resolves the owning assistant step from the chat snapshot (turn, step,
++ * time, blocks) and opens the Session's quote dialog. Clicking is never
++ * gated on the composer state — quoting while the Session is busy is the
++ * steering case and submits through the queue like any other message.
++ * @module @deepseek-ai/dsh-client-ui-quote/client/actions
++ */
++
++import { useCallback } from 'react'
++import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
++import type {
++  AssistantBlock, AssistantChatData, ChatSnapshot,
++} from '@deepseek-ai/dsh-client-ui-chat/client'
++import { buildTarget } from './quote.ts'
++import type { QuoteActionProps } from './slots.ts'
++import css from './actions.module.css'
++
++/**
++ * The 16px quote glyph: two top corner brackets, outline style matching the
++ * strip's other icons.
++ * @returns the glyph element.
++ */
++export function QuoteGlyph() {
++  return (
++    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
++      <path
++        d="M5.8 2.5H3.4A1.9 1.9 0 0 0 1.5 4.4v2.1M10.2 2.5h2.4a1.9 1.9 0 0 1 1.9 1.9v2.1"
++        stroke="currentColor"
++        strokeWidth="1.5"
++        strokeLinecap="round"
++      />
++      <path
++        d="M5.8 13.5H3.4a1.9 1.9 0 0 1-1.9-1.9v-2.1M10.2 13.5h2.4a1.9 1.9 0 0 0 1.9-1.9v-2.1"
++        stroke="currentColor"
++        strokeWidth="1.5"
++        strokeLinecap="round"
++      />
++    </svg>
++  )
++}
++
++/** Assistant step data with a quotable text block, or nothing. */
++export function quotableData(data: unknown): { blocks: readonly AssistantBlock[]; messageId: string | undefined; turn: number; step: number; time: number } | undefined {
++  if (data === null || typeof data !== 'object') return undefined
++  const chat = data as Partial<AssistantChatData>
++  if (typeof chat.turn !== 'number' || typeof chat.time !== 'number') return undefined
++  const blocks = Array.isArray(chat.blocks) ? chat.blocks : undefined
++  if (blocks === undefined) return undefined
++  const text = blocks.some(block => block.kind === 'text' && block.text.length > 0)
++  if (!text) return undefined
++  const finalNode = chat.finalNode
++  return {
++    blocks,
++    messageId: finalNode !== undefined && typeof finalNode === 'object' && finalNode.messageId !== undefined
++      ? String(finalNode.messageId)
++      : undefined,
++    turn: chat.turn,
++    step: typeof chat.step === 'number' ? chat.step : Number(chat.turn),
++    time: chat.time,
++  }
++}
++
++/**
++ * Resolve the quotable assistant step for one finalized message id by
++ * scanning the snapshot nodes. The action strip renders in the turn-tail
++ * node, whose own payload is not the step data, so the step node must be
++ * found through its durable message id.
++ * @param chat - the Session's chat view snapshot.
++ * @param messageId - the seat owner's durable message id.
++ * @returns the step payload, or undefined when no step matches.
++ */
++export function resolveStepById(
++  chat: ChatSnapshot | undefined,
++  messageId: string | number | undefined,
++): ReturnType<typeof quotableData> {
++  if (chat === undefined || messageId === undefined) return undefined
++  for (const node of chat.nodes.values()) {
++    const data = quotableData(node.data)
++    if (data === undefined) continue
++    if (String(data.messageId ?? '') === String(messageId)) return data
++  }
++  return undefined
++}
++
++/**
++ * The assistant-message quote action entry.
++ * @param props - slot runtime + injected quote face + the Session standard kit.
++ * @returns the icon button element.
++ */
++export function QuoteActions({
++  open, messageId, useConversation, t,
++}: QuoteActionProps) {
++  const chat = useConversation(state => state.views.get('chat') as ChatSnapshot | undefined)
++  const onClick = useCallback(() => {
++    const data = resolveStepById(chat, messageId)
++    if (data === undefined) return
++    open(buildTarget(data.blocks, data.messageId, data.turn, data.step, data.time))
++  }, [chat, messageId, open])
++  const label = t('action.quote')
++  return (
++    <Tooltip label={label} side="bottom">
++      <button
++        type="button"
++        className={css.action}
++        aria-label={label}
++        onClick={onClick}
++      >
++        <QuoteGlyph />
++      </button>
++    </Tooltip>
++  )
++}
+diff --git a/packages/client/ui-quote/src/client/dialog.module.css b/packages/client/ui-quote/src/client/dialog.module.css
+new file mode 100644
+index 0000000000..10341bc945
+--- /dev/null
++++ b/packages/client/ui-quote/src/client/dialog.module.css
+@@ -0,0 +1,50 @@
++/* The quote dialog card: the preview is a bounded scroll region, the
++   comment textarea grows with the comment. The doubled selector overrides
++   the Modal card geometry, like the feedback dialog. */
++.dialog.dialog {
++  width: min(520px, 100%);
++  border-radius: 18px;
++}
++
++.empty {
++  margin: 4px 0;
++  color: var(--dsw-alias-label-secondary);
++  font: inherit;
++  font-size: 13px;
++  line-height: 18px;
++}
++
++.preview {
++  max-height: 38vh;
++  overflow-y: auto;
++  margin: 0 0 10px;
++  padding: 10px 12px;
++  border: 0.5px solid var(--dsw-alias-border-l3);
++  border-radius: 12px;
++  background: var(--dsw-alias-bg-l1);
++  color: var(--dsw-alias-label-primary);
++  font: inherit;
++  font-size: 12.5px;
++  line-height: 18px;
++  white-space: pre-wrap;
++  word-break: break-word;
++}
++
++.comment {
++  width: 100%;
++  min-height: 56px;
++  max-height: 40vh;
++  resize: vertical;
++  padding: 8px 10px;
++  border: 0.5px solid var(--dsw-alias-border-l3);
++  border-radius: 12px;
++  background: transparent;
++  color: var(--dsw-alias-label-primary);
++  font: inherit;
++  font-size: 13px;
++  line-height: 18px;
++}
++
++.comment::placeholder {
++  color: var(--dsw-alias-label-tertiary);
++}
+diff --git a/packages/client/ui-quote/src/client/dialog.tsx b/packages/client/ui-quote/src/client/dialog.tsx
+new file mode 100644
+index 0000000000..e4d760f24d
+--- /dev/null
++++ b/packages/client/ui-quote/src/client/dialog.tsx
+@@ -0,0 +1,84 @@
++/**
++ * The quote dialog entry: a centered body-portaled modal seated in the
++ * composer overlay. Shows the quoted text with its temporal header line,
++ * takes a comment, and either sends (quote + comment + existing draft) or
++ * stages the same composition into the composer for manual sending.
++ * @module @deepseek-ai/dsh-client-ui-quote/client/dialog
++ */
++
++import { useCallback } from 'react'
++import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
++import { composeDraft, formatQuoteTime } from './quote.ts'
++import type { QuoteDialogProps } from './slots.ts'
++import css from './dialog.module.css'
++
++/**
++ * The quote dialog overlay entry.
++ * @param props - slot runtime + injected quote face + the Session standard kit.
++ * @returns the modal element, or null while closed.
++ */
++export function QuoteDialog({
++  useDialog, setComment, close, useInput, inputActions, t,
++}: QuoteDialogProps) {
++  const state = useDialog(snapshot => snapshot)
++  const draft = useInput(snapshot => snapshot.draft)
++  const target = state.open ? state.target : null
++  const comment = state.comment
++  const empty = target === null || target.text.length === 0
++
++  const header = target === null
++    ? undefined
++    : `assistant · turn ${target.turn} · step ${target.step} · ${formatQuoteTime(target.time)}`
++      + (target.messageId !== undefined ? ` · msg ${target.messageId}` : '')
++
++  const compose = useCallback(() => {
++    if (target === null) return ''
++    return composeDraft(target, comment, draft)
++  }, [target, comment, draft])
++
++  const onSend = useCallback(() => {
++    if (target === null || inputActions === undefined) return
++    inputActions.setDraft(compose())
++    inputActions.submit()
++    close()
++  }, [close, compose, inputActions, target])
++
++  const onStage = useCallback(() => {
++    if (target === null || inputActions === undefined) return
++    inputActions.setDraft(compose())
++    close()
++  }, [close, compose, inputActions, target])
++
++  return (
++    <Modal
++      open={state.open}
++      onClose={close}
++      title={t('dialog.title')}
++      closeLabel={t('dialog.close')}
++      {...(css.dialog !== undefined ? { className: css.dialog } : {})}
++      {...(header !== undefined ? { description: header } : {})}
++      footer={empty
++        ? <Button variant="outline" onClick={close}>{t('dialog.close')}</Button>
++        : (
++            <>
++              <Button variant="outline" onClick={onStage}>{t('dialog.stage')}</Button>
++              <Button variant="primary" onClick={onSend}>{t('dialog.send')}</Button>
++            </>
++          )}
++    >
++      {empty ? (
++        <p className={css.empty}>{t('dialog.empty')}</p>
++      ) : (
++        <>
++          <pre className={css.preview}>{target.text}{target.truncated ? t('dialog.truncated') : ''}</pre>
++          <textarea
++            className={css.comment}
++            value={comment}
++            onChange={event => setComment(event.target.value)}
++            placeholder={t('dialog.commentPlaceholder')}
++          />
++        </>
++      )}
++    </Modal>
++  )
++}
+diff --git a/packages/client/ui-quote/src/client/index.ts b/packages/client/ui-quote/src/client/index.ts
+new file mode 100644
+index 0000000000..3fbc06296e
+--- /dev/null
++++ b/packages/client/ui-quote/src/client/index.ts
+@@ -0,0 +1,103 @@
++/**
++ * Quote surface plugin, browser half: the quote entry in the
++ * conversation.chat.assistant-actions strip, the per-paragraph quote
++ * tracker box in the composer overlay (present while a step is still
++ * rendering or thinking — the steering case), and the quote dialog in
++ * conversation.input.overlay. One QuoteSurface per Session backs all three
++ * entries: the entries resolve the quoted step or paragraph and open the
++ * dialog, the overlay entry renders it and composes the submission.
++ * @module @deepseek-ai/dsh-client-ui-quote/client
++ */
++
++import type { Context as ClientContext } from '@deepseek-ai/cordis'
++import type { SessionId } from '@deepseek-ai/dsh-session/types'
++// Type-only: pulls the ui-conversation SlotMap merge (the assistant-actions
++// and overlay entries) and the SessionStandardProps merge.
++import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
++// Type-only: pulls the ui-chat SlotMap merge (the assistant-actions seat)
++// and the ChatSnapshot type the action entry reads.
++import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
++// Type-only: pulls the SlotRegistry service merge (ctx.slots).
++import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
++// Type-only: pulls the locale plugin's Context merge (ctx.locale).
++import type {} from '@deepseek-ai/dsh-client-locale/client'
++import { QuoteActions } from './actions.tsx'
++import { QuoteDialog } from './dialog.tsx'
++import { ParagraphQuoteTracker } from './paragraph.tsx'
++import type { ParagraphTrackerInjected, QuoteActionInjected, QuoteDialogInjected } from './slots.ts'
++import { QuoteSurface } from './surface.ts'
++import { en, zh } from './locales.ts'
++
++/** Dictionary namespace owned by this plugin. */
++const NS = 'quote'
++
++/** Required services: the slot registry and the copy. */
++export const inject = ['slots', 'locale']
++
++/**
++ * Client plugin body: the per-message quote action and the Session's
++ * quote dialog.
++ * @param ctx - client root context.
++ */
++export function apply(ctx: ClientContext): void {
++  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-quote: dictionaries')
++
++  const surfaces = new Map<SessionId, QuoteSurface>()
++  const surfaceFor = (sessionId: SessionId): QuoteSurface => {
++    let surface = surfaces.get(sessionId)
++    if (surface === undefined) {
++      surface = new QuoteSurface()
++      surfaces.set(sessionId, surface)
++    }
++    return surface
++  }
++  ctx.effect(() => () => {
++    for (const surface of surfaces.values()) surface.dispose()
++    surfaces.clear()
++  }, 'ui-quote: per-session surfaces')
++
++  ctx.slots.inject('conversation.chat.assistant-actions', () => ctx.slots.register({
++    name: 'conversation.chat.assistant-actions',
++    id: 'quote',
++    order: 20,
++    locale: NS,
++    inject: (sessionId): QuoteActionInjected => {
++      const surface = surfaceFor(sessionId)
++      return {
++        hooks: { dialog: surface.state },
++        open: target => { surface.open(target) },
++      }
++    },
++  }, QuoteActions))
++
++  ctx.slots.inject('conversation.input.overlay', () => ctx.slots.register({
++    name: 'conversation.input.overlay',
++    id: 'quote-dialog',
++    order: 3,
++    locale: NS,
++    inject: (sessionId): QuoteDialogInjected => {
++      const surface = surfaceFor(sessionId)
++      return {
++        hooks: { dialog: surface.state },
++        setComment: text => { surface.setComment(text) },
++        close: () => { surface.close() },
++      }
++    },
++  }, QuoteDialog))
++
++  // The per-paragraph tracker box: one overlay entry per Session that
++  // follows the hovered paragraph across every assistant step (including
++  // the streaming one) and opens the same shared dialog.
++  ctx.slots.inject('conversation.input.overlay', () => ctx.slots.register({
++    name: 'conversation.input.overlay',
++    id: 'quote-paragraph',
++    order: 4,
++    locale: NS,
++    inject: (sessionId): ParagraphTrackerInjected => {
++      const surface = surfaceFor(sessionId)
++      return {
++        open: target => { surface.open(target) },
++      }
++    },
++  }, ParagraphQuoteTracker))
++}
+diff --git a/packages/client/ui-quote/src/client/locales.ts b/packages/client/ui-quote/src/client/locales.ts
+new file mode 100644
+index 0000000000..fd1e536064
+--- /dev/null
++++ b/packages/client/ui-quote/src/client/locales.ts
+@@ -0,0 +1,37 @@
++/** `quote` namespace dictionaries. */
++
++/** Simplified Chinese dictionary (the key-set source of truth). */
++export const zh = {
++  'action.quote': '引用这条消息',
++  'action.paragraph': '引用这一段',
++  'dialog.title': '引用消息',
++  'dialog.close': '关闭',
++  'dialog.empty': '这条消息没有可引用的文本。',
++  'dialog.commentPlaceholder': '添加你的评论…',
++  'dialog.send': '发送',
++  'dialog.stage': '放入输入框',
++  'dialog.truncated': '…（已截断）',
++} satisfies Record<string, string>
++
++/** The quote namespace key union. */
++export type QuoteKey = keyof typeof zh
++
++declare module '@deepseek-ai/dsh-client-ui-slots' {
++  interface LocaleNamespaceMap {
++    /** The quote surface's copy: the message action and the dialog. */
++    quote: QuoteKey
++  }
++}
++
++/** English dictionary, checked complete against the zh key set. */
++export const en = {
++  'action.quote': 'Quote this message',
++  'action.paragraph': 'Quote this paragraph',
++  'dialog.title': 'Quote message',
++  'dialog.close': 'Close',
++  'dialog.empty': 'This message has no text to quote.',
++  'dialog.commentPlaceholder': 'Add your comment…',
++  'dialog.send': 'Send',
++  'dialog.stage': 'To composer',
++  'dialog.truncated': '…[truncated]',
++} satisfies Record<QuoteKey, string>
+diff --git a/packages/client/ui-quote/src/client/paragraph.module.css b/packages/client/ui-quote/src/client/paragraph.module.css
+new file mode 100644
+index 0000000000..8f42474299
+--- /dev/null
++++ b/packages/client/ui-quote/src/client/paragraph.module.css
+@@ -0,0 +1,29 @@
++/* The per-paragraph margin box, fixed-positioned beside the hovered
++   paragraph. One size with the strip actions, lighter treatment because
++   it floats in the reading margin. */
++.box {
++  position: fixed;
++  z-index: 60;
++  display: inline-flex;
++  align-items: center;
++  justify-content: center;
++  width: calc(28px + var(--dsh-content-font-delta, 0px));
++  height: calc(28px + var(--dsh-content-font-delta, 0px));
++  padding: 6px;
++  border: 1px solid var(--dsw-alias-border-l);
++  border-radius: 28px;
++  background: var(--dsw-alias-bg-layer-2);
++  color: var(--dsw-alias-label-secondary);
++  cursor: pointer;
++  box-shadow: 0 1px 4px rgb(0 0 0 / 14%);
++}
++
++.box svg {
++  width: calc(15px + var(--dsh-content-font-delta, 0px));
++  height: calc(15px + var(--dsh-content-font-delta, 0px));
++}
++
++.box:hover {
++  background: var(--dsw-alias-interactive-bg-hover);
++  color: var(--dsw-alias-label-primary, currentColor);
++}
+diff --git a/packages/client/ui-quote/src/client/paragraph.tsx b/packages/client/ui-quote/src/client/paragraph.tsx
+new file mode 100644
+index 0000000000..c50708effb
+--- /dev/null
++++ b/packages/client/ui-quote/src/client/paragraph.tsx
+@@ -0,0 +1,222 @@
++/**
++ * The per-paragraph quote tracker: a small box in the left margin of the
++ * hovered paragraph inside any assistant step, including the step that is
++ * still rendering or thinking. It tracks the live DOM (the text as it is
++ * being rendered), resolves the step's temporal anchors from the chat
++ * snapshot, and opens the Session's quote dialog with that paragraph as
++ * the quoted text. Mounted once per Session in the composer overlay so the
++ * affordance exists while output is streaming — the steering case.
++ * @module @deepseek-ai/dsh-client-ui-quote/client/paragraph
++ */
++
++import { useEffect, useRef, useState } from 'react'
++import { createPortal } from 'react-dom'
++import type {
++  AssistantChatData, ChatSnapshot,
++} from '@deepseek-ai/dsh-client-ui-chat/client'
++import { QUOTE_TEXT_CAP } from './quote.ts'
++import { QuoteGlyph } from './actions.tsx'
++import type { ParagraphTrackerProps } from './slots.ts'
++import css from './paragraph.module.css'
++
++/** Block-level elements the margin box attaches to. */
++const PARAGRAPH_SELECTOR = 'p, li, blockquote, pre, h1, h2, h3, h4, h5, h6'
++
++/** The seat wrapper marking one assistant step in the chat flow. */
++const SEAT_SELECTOR = '[data-chat-anchor-key][data-chat-flow-kind="assistant-step"]'
++
++/** Left margin needed for the 28px box plus a small gap. */
++const BOX_LEFT_MARGIN = 34
++
++/** The box lingers this long after the pointer leaves the paragraph, so it
++    can still be reached across the left margin. */
++const HIDE_GRACE_MS = 350
++
++/** One hovered paragraph and its resolved step anchors. */
++interface HoverState {
++  el: Element
++  top: number
++  left: number
++  text: string
++  truncated: boolean
++  turn: number
++  step: number
++  time: number
++  messageId: string | undefined
++}
++
++/**
++ * Resolve the step payload fields from one seat node's live data. The
++ * tracker deliberately does not require finalized blocks: while the step
++ * is still streaming (or only thinking) the visible text is what the
++ * human points at, and turn/step/time are already recorded.
++ * @param data - the seat node's live payload.
++ * @returns turn/step/time/messageId, or undefined for non-quotable nodes.
++ */
++export function stepAnchorsOf(data: unknown): { turn: number; step: number; time: number; messageId: string | undefined } | undefined {
++  if (data === null || typeof data !== 'object') return undefined
++  const step = data as Partial<AssistantChatData>
++  if (typeof step.turn !== 'number' || typeof step.time !== 'number') return undefined
++  const finalNode = step.finalNode
++  const messageId = finalNode !== undefined && typeof finalNode === 'object' && finalNode.messageId !== undefined
++    ? String(finalNode.messageId)
++    : undefined
++  return {
++    turn: step.turn,
++    step: typeof step.step === 'number' ? step.step : Number(step.turn),
++    time: step.time,
++    messageId,
++  }
++}
++
++/** Cap one paragraph's text for quoting. */
++export function capParagraphText(text: string): { text: string; truncated: boolean } {
++  const trimmed = text.trim()
++  if (trimmed.length <= QUOTE_TEXT_CAP) return { text: trimmed, truncated: false }
++  return { text: trimmed.slice(0, QUOTE_TEXT_CAP), truncated: true }
++}
++
++/**
++ * The per-paragraph quote tracker overlay entry.
++ * @param props - slot runtime + injected quote face + the Session standard kit.
++ * @returns the portaled margin box, or null while nothing is hovered.
++ */
++export function ParagraphQuoteTracker({ open, useConversation, t }: ParagraphTrackerProps) {
++  const chat = useConversation(state => state.views.get('chat') as ChatSnapshot | undefined)
++  const chatRef = useRef(chat)
++  chatRef.current = chat
++  const [hover, setHover] = useState<HoverState | null>(null)
++  const hoverRef = useRef(hover)
++  hoverRef.current = hover
++
++  useEffect(() => {
++    let hideTimer: ReturnType<typeof setTimeout> | undefined
++    const clearTimer = () => {
++      if (hideTimer !== undefined) {
++        clearTimeout(hideTimer)
++        hideTimer = undefined
++      }
++    }
++    // The box lingers briefly after the pointer leaves the paragraph so it
++    // can be reached across the left margin: the pointer crosses non-
++    // paragraph territory between the text and the box.
++    const scheduleHide = () => {
++      clearTimer()
++      hideTimer = setTimeout(() => {
++        hideTimer = undefined
++        setHover(null)
++      }, HIDE_GRACE_MS)
++    }
++    const onMove = (event: MouseEvent) => {
++      const source = event.target
++      if (!(source instanceof Element)) return
++      // Over the box itself: keep it and cancel any pending hide.
++      if (source.closest('[data-dsw-quote-box]') !== null) {
++        clearTimer()
++        return
++      }
++      const paragraph = source.closest(PARAGRAPH_SELECTOR)
++      if (paragraph === null) {
++        scheduleHide()
++        return
++      }
++      const seat = paragraph.closest(SEAT_SELECTOR)
++      if (seat === null) {
++        scheduleHide()
++        return
++      }
++      const key = seat instanceof HTMLElement ? seat.dataset.chatAnchorKey : undefined
++      const snapshot = chatRef.current
++      if (key === undefined || snapshot === undefined) {
++        scheduleHide()
++        return
++      }
++      const node = snapshot.nodes.get(key)
++      const anchors = node === undefined ? undefined : stepAnchorsOf(node.data)
++      if (anchors === undefined) {
++        scheduleHide()
++        return
++      }
++      const capped = capParagraphText(paragraph.textContent ?? '')
++      if (capped.text.length === 0) {
++        scheduleHide()
++        return
++      }
++      const rect = paragraph.getBoundingClientRect()
++      const left = rect.left - BOX_LEFT_MARGIN
++      if (left < 4) {
++        scheduleHide()
++        return
++      }
++      const current = hoverRef.current
++      if (current !== null && current.el === paragraph
++        && Math.abs(current.top - rect.top) < 2) {
++        clearTimer()
++        return
++      }
++      clearTimer()
++      setHover({
++        el: paragraph,
++        top: Math.max(8, rect.top + 2),
++        left,
++        text: capped.text,
++        truncated: capped.truncated,
++        turn: anchors.turn,
++        step: anchors.step,
++        time: anchors.time,
++        messageId: anchors.messageId,
++      })
++    }
++    const onHide = () => {
++      clearTimer()
++      setHover(null)
++    }
++    document.addEventListener('mousemove', onMove)
++    document.addEventListener('scroll', onHide, true)
++    window.addEventListener('resize', onHide)
++    return () => {
++      clearTimer()
++      document.removeEventListener('mousemove', onMove)
++      document.removeEventListener('scroll', onHide, true)
++      window.removeEventListener('resize', onHide)
++    }
++  }, [])
++
++  const label = t('action.paragraph')
++  if (hover === null) return null
++  return createPortal(
++    <button
++      type="button"
++      data-dsw-quote-box=""
++      className={css.box}
++      style={{ top: hover.top, left: hover.left }}
++      aria-label={label}
++      title={label}
++      onClick={() => {
++        const current = hoverRef.current
++        if (current === null) return
++        // Re-read the text when the element survived streaming re-renders.
++        const capped = current.el.isConnected
++          ? capParagraphText(current.el.textContent ?? '')
++          : { text: current.text, truncated: current.truncated }
++        if (capped.text.length === 0) {
++          setHover(null)
++          return
++        }
++        open({
++          kind: 'assistant',
++          messageId: current.messageId,
++          turn: current.turn,
++          step: current.step,
++          time: current.time,
++          text: capped.text,
++          truncated: capped.truncated,
++        })
++        setHover(null)
++      }}
++    >
++      <QuoteGlyph />
++    </button>,
++    document.body,
++  )
++}
+diff --git a/packages/client/ui-quote/src/client/quote.ts b/packages/client/ui-quote/src/client/quote.ts
+new file mode 100644
+index 0000000000..91ea655a39
+--- /dev/null
++++ b/packages/client/ui-quote/src/client/quote.ts
+@@ -0,0 +1,115 @@
++/**
++ * Pure quote logic: the target shape, text extraction, the composer draft
++ * block format, and the draft composition. No React, no services.
++ * @module @deepseek-ai/dsh-client-ui-quote/client/quote
++ */
++
++import type { AssistantBlock } from '@deepseek-ai/dsh-client-ui-conversation/client'
++
++/** Maximum quoted text length; longer steps are capped and marked. */
++export const QUOTE_TEXT_CAP = 4000
++
++/** Closing marker line of one quote block inside the composer draft. */
++export const QUOTE_MARKER_CLOSE = '[/quote]'
++
++/**
++ * One resolved quote target: the assistant step the human pointed at, the
++ * exact temporal anchors, and the quoted text (text blocks only — reasoning
++ * stays out by design).
++ */
++export interface QuoteTarget {
++  readonly kind: 'assistant'
++  /** Durable assistant message identity; absent on interrupted chunk fallbacks. */
++  readonly messageId: string | undefined
++  /** Conversation turn owning the step (the Nth human prompt). */
++  readonly turn: number
++  /** Step within the turn; undefined when the node carries no step boundary. */
++  readonly step: number | undefined
++  /** Unix epoch ms of the message's final timestamp. */
++  readonly time: number
++  /** The quoted text, capped at {@link QUOTE_TEXT_CAP}. */
++  readonly text: string
++  /** Whether the text was capped. */
++  readonly truncated: boolean
++}
++
++/** Join the quotable (text-only) blocks of one assistant step. */
++export function quoteTextOf(blocks: readonly AssistantBlock[]): string {
++  return blocks
++    .filter((block): block is Extract<AssistantBlock, { kind: 'text' }> => block.kind === 'text')
++    .map(block => block.text)
++    .join('\n\n')
++}
++
++/**
++ * Resolve one quote target from an assistant step's recorded payload.
++ * @param blocks - the step's content blocks.
++ * @param messageId - durable identity, when the step has a finalized message.
++ * @param turn - owning turn number.
++ * @param step - step within the turn, when recorded.
++ * @param time - final message timestamp in epoch ms.
++ * @returns the capped, ready-to-quote target.
++ */
++export function buildTarget(
++  blocks: readonly AssistantBlock[],
++  messageId: string | undefined,
++  turn: number,
++  step: number | undefined,
++  time: number,
++): QuoteTarget {
++  let text = quoteTextOf(blocks)
++  let truncated = false
++  if (text.length > QUOTE_TEXT_CAP) {
++    text = text.slice(0, QUOTE_TEXT_CAP)
++    truncated = true
++  }
++  return { kind: 'assistant', messageId, turn, step, time, text, truncated }
++}
++
++/** Local wall-clock ISO with offset and second precision, e.g. 2026-09-18T17:42:10+02:00. */
++export function formatQuoteTime(ms: number): string {
++  const d = new Date(ms)
++  const p = (n: number): string => String(n).padStart(2, '0')
++  const offsetMinutes = -d.getTimezoneOffset()
++  const sign = offsetMinutes >= 0 ? '+' : '-'
++  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
++    + `T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
++    + `${sign}${p(Math.floor(Math.abs(offsetMinutes) / 60))}:${p(Math.abs(offsetMinutes) % 60)}`
++}
++
++/**
++ * Compose the quote block as it enters the composer draft: a marker header
++ * line with the temporal anchors, the quoted text as a markdown blockquote,
++ * and the closing marker. The header is self-describing for the model:
++ * turn/step identify the position in this conversation, the timestamp the
++ * wall-clock moment, the message id the durable record.
++ * @param target - the resolved quote target.
++ * @returns the block text, ready to prepend to the draft.
++ */
++export function buildQuoteBlock(target: QuoteTarget): string {
++  const meta = [
++    'assistant message',
++    `turn ${target.turn}`,
++    target.step !== undefined ? `step ${target.step}` : undefined,
++    target.truncated ? 'truncated' : undefined,
++  ].filter((part): part is string => part !== undefined).join(' · ')
++  const body = target.text.split('\n').map(line => `> ${line}`).join('\n')
++  const header = `[Quoted from: ${meta} · ${formatQuoteTime(target.time)}`
++    + (target.messageId !== undefined ? ` · msg ${target.messageId}` : '') + ']'
++  return `${header}\n${body}\n${QUOTE_MARKER_CLOSE}`
++}
++
++/**
++ * Compose the full draft for a quote submission or staging: the quote block,
++ * the dialog comment when present, then the composer's existing draft when
++ * non-empty. Everything is preserved; nothing is silently dropped.
++ * @param target - the resolved quote target.
++ * @param comment - the dialog comment, trimmed.
++ * @param existing - the composer's current draft.
++ * @returns the composed draft text.
++ */
++export function composeDraft(target: QuoteTarget, comment: string, existing: string): string {
++  return [buildQuoteBlock(target), comment.trim(), existing.trim()]
++    .filter(part => part !== '')
++    .join('\n\n')
++}
+diff --git a/packages/client/ui-quote/src/client/slots.ts b/packages/client/ui-quote/src/client/slots.ts
+new file mode 100644
+index 0000000000..1887c74107
+--- /dev/null
++++ b/packages/client/ui-quote/src/client/slots.ts
+@@ -0,0 +1,69 @@
++/**
++ * The injected faces of this package's two entries. The
++ * 'conversation.chat.assistant-actions' and 'conversation.input.overlay'
++ * slots are declared and typed by ui-chat and ui-conversation; this package
++ * only contributes entries. Live state arrives through the `hooks`
++ * compartment (the framework standard kit binds `dialog` into `useDialog`).
++ * @module @deepseek-ai/dsh-client-ui-quote/client/slots
++ */
++
++import type {
++  HostObservable, InjectFace, PropsLocale, PropsRuntime,
++} from '@deepseek-ai/dsh-client-ui-slots'
++// Type-only: pulls the ui-conversation SlotMap merge (the two slot names),
++// its standard-props merge (useInput/inputActions/useConversation), and the
++// AssistantBlock type this package quotes.
++import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
++// Type-only: pulls this package's LocaleNamespaceMap merge (the 'quote' seat).
++import type {} from './locales.ts'
++import type { QuoteTarget } from './quote.ts'
++import type { QuoteDialogState } from './surface.ts'
++
++/** Injected business face of one assistant-message quote action entry. */
++export interface QuoteActionInjected {
++  hooks: {
++    /** The owning Session's quote dialog state, shared by both entries. */
++    dialog: HostObservable<QuoteDialogState>
++  }
++  /** Open the Session's quote dialog for one resolved target. */
++  open: (target: QuoteTarget) => void
++}
++
++/** Full props of the assistant-message quote action entry. */
++export type QuoteActionProps =
++  PropsRuntime<'conversation.chat.assistant-actions'>
++  & InjectFace<QuoteActionInjected>
++  & PropsLocale<'quote'>
++
++/** Injected business face of the Session's quote dialog entry. */
++export interface QuoteDialogInjected {
++  hooks: {
++    /** The Session's quote dialog state. */
++    dialog: HostObservable<QuoteDialogState>
++  }
++  /** Replace the dialog comment. */
++  setComment: (text: string) => void
++  /** Close the dialog, discarding the comment. */
++  close: () => void
++}
++
++/** Full props of the quote dialog overlay entry. */
++export type QuoteDialogProps =
++  PropsRuntime<'conversation.input.overlay'>
++  & InjectFace<QuoteDialogInjected>
++  & PropsLocale<'quote'>
++
++/**
++ * The paragraph tracker has no dialog hooks of its own — it only resolves
++ * a hovered paragraph and opens the Session's shared dialog.
++ */
++export interface ParagraphTrackerInjected {
++  /** Open the Session's quote dialog for one resolved target. */
++  open: (target: QuoteTarget) => void
++}
++
++/** Full props of the per-paragraph quote tracker overlay entry. */
++export type ParagraphTrackerProps =
++  PropsRuntime<'conversation.input.overlay'>
++  & InjectFace<ParagraphTrackerInjected>
++  & PropsLocale<'quote'>
+diff --git a/packages/client/ui-quote/src/client/surface.ts b/packages/client/ui-quote/src/client/surface.ts
+new file mode 100644
+index 0000000000..800a06f32e
+--- /dev/null
++++ b/packages/client/ui-quote/src/client/surface.ts
+@@ -0,0 +1,56 @@
++/**
++ * One Session's quote surface: the dialog state shared by the assistant
++ * message action entry (which opens it) and the composer overlay entry
++ * (which renders it and composes the submission).
++ * @module @deepseek-ai/dsh-client-ui-quote/client/surface
++ */
++
++import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
++import { type QuoteTarget } from './quote.ts'
++
++/** The dialog's published state for one Session. */
++export interface QuoteDialogState {
++  /** Whether the dialog is showing. */
++  readonly open: boolean
++  /** The quote target the dialog is open for; null when closed. */
++  readonly target: QuoteTarget | null
++  /** The comment the human is typing in the dialog. */
++  readonly comment: string
++}
++
++/** Closed resting state. */
++export const QUOTE_CLOSED: QuoteDialogState = Object.freeze({ open: false, target: null, comment: '' })
++
++/** The per-session surface behind both quote entries of one Session. */
++export class QuoteSurface {
++  /** The dialog state, shared by the action entry and the overlay entry. */
++  readonly state: SnapshotStore<QuoteDialogState> = createSnapshotStore<QuoteDialogState>(QUOTE_CLOSED)
++
++  /**
++   * Open the dialog for one resolved target, replacing any open target.
++   * @param target - the resolved quote target.
++   */
++  open(target: QuoteTarget): void {
++    this.state.set({ open: true, target, comment: '' })
++  }
++
++  /** Close the dialog, discarding the in-flight comment. */
++  close(): void {
++    this.state.set(QUOTE_CLOSED)
++  }
++
++  /**
++   * Replace the dialog comment.
++   * @param text - the current comment text.
++   */
++  setComment(text: string): void {
++    const current = this.state.getSnapshot()
++    if (current.comment === text) return
++    this.state.set({ ...current, comment: text })
++  }
++
++  /** Retire the surface: close the dialog so no stale state outlives the fiber. */
++  dispose(): void {
++    this.state.set(QUOTE_CLOSED)
++  }
++}
+diff --git a/packages/client/ui-quote/src/css-modules.d.ts b/packages/client/ui-quote/src/css-modules.d.ts
+new file mode 100644
+index 0000000000..bc5e482353
+--- /dev/null
++++ b/packages/client/ui-quote/src/css-modules.d.ts
+@@ -0,0 +1,6 @@
++declare module '*.module.css' {
++  const classes: Record<string, string>
++  export default classes
++}
++
++declare module '*.css'
+diff --git a/packages/client/ui-quote/src/index.ts b/packages/client/ui-quote/src/index.ts
+new file mode 100644
+index 0000000000..1cafefeeb6
+--- /dev/null
++++ b/packages/client/ui-quote/src/index.ts
+@@ -0,0 +1,9 @@
++/**
++ * Quote surface plugin, node half. Pure UI plugin: the empty apply exists so
++ * the plugin appears in the host cordis.yml / Loader; the browser half ships
++ * via exports["./client"], discovered through the package.json dsh.client
++ * declaration.
++ */
++
++/** Host plugin body — no host-side behavior for this surface plugin. */
++export function apply(): void {}
+diff --git a/packages/client/ui-quote/tests/browser-plugin.client.spec.tsx b/packages/client/ui-quote/tests/browser-plugin.client.spec.tsx
+new file mode 100644
+index 0000000000..9d76d4ee70
+--- /dev/null
++++ b/packages/client/ui-quote/tests/browser-plugin.client.spec.tsx
+@@ -0,0 +1,139 @@
++// @vitest-environment jsdom
++/**
++ * ui-quote browser half on a real cordis Context with a real SlotRegistry:
++ * the plugin registers the quote entry at
++ * conversation.chat.assistant-actions and the dialog + per-paragraph
++ * tracker entries at conversation.input.overlay; one surface per Session
++ * backs every entry of that Session and two Sessions stay isolated;
++ * registration and surface disposal ride the plugin fiber. The node half
++ * stays inert.
++ */
++import { Context } from '@deepseek-ai/cordis'
++import { afterEach, describe, expect, it } from 'vitest'
++import { cleanup } from '@testing-library/react'
++import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
++import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
++import type { SessionId } from '@deepseek-ai/dsh-session/types'
++import type { ParagraphTrackerInjected, QuoteActionInjected, QuoteDialogInjected } from '../src/client/slots.ts'
++import { apply, inject } from '../src/client/index.ts'
++import { apply as nodeApply } from '../src/index.ts'
++
++afterEach(cleanup)
++
++const sid = (key: string): SessionId => key as SessionId
++
++/** Boot the plugin over the real SlotRegistry and a real locale runtime. */
++async function bench() {
++  const ctx = new Context()
++  await ctx.plugin(SlotRegistry).await()
++  ctx.slots.register({
++    name: 'root',
++    children: {
++      'conversation.chat.assistant-actions': { kind: 'list', scope: 'session', owner: { messageId: 'm' } },
++      'conversation.input.overlay': { kind: 'list', scope: 'session' },
++    },
++  } as never, (() => null) as never)
++  ctx.provide('locale', new LocaleRuntime(ctx))
++  const fiber = ctx.plugin({ inject: [...inject], apply })
++  const overlay = () => ctx.slots.entries('conversation.input.overlay')
++  return {
++    ctx,
++    fiber,
++    actionEntry: () => {
++      const entry = ctx.slots.entries('conversation.chat.assistant-actions')[0]
++      if (entry === undefined) return undefined
++      return {
++        ...entry.options,
++        locale: entry.locale,
++        inject: entry.inject as unknown as ((sessionId: SessionId) => QuoteActionInjected) | undefined,
++      }
++    },
++    dialogEntry: () => {
++      const entry = overlay().find(candidate => candidate.options.id === 'quote-dialog')
++      if (entry === undefined) return undefined
++      return {
++        ...entry.options,
++        locale: entry.locale,
++        inject: entry.inject as unknown as ((sessionId: SessionId) => QuoteDialogInjected) | undefined,
++      }
++    },
++    trackerEntry: () => {
++      const entry = overlay().find(candidate => candidate.options.id === 'quote-paragraph')
++      if (entry === undefined) return undefined
++      return {
++        ...entry.options,
++        locale: entry.locale,
++        inject: entry.inject as unknown as ((sessionId: SessionId) => ParagraphTrackerInjected) | undefined,
++      }
++    },
++  }
++}
++
++describe('ui-quote browser plugin', () => {
++  it('registers the three entries with the documented ids, orders, and locale', async () => {
++    const b = await bench()
++    await b.fiber.await()
++    const action = b.actionEntry()
++    expect(action?.id).toBe('quote')
++    expect(action?.order).toBe(20)
++    expect(action?.locale).toBe('quote')
++    const dialog = b.dialogEntry()
++    expect(dialog?.id).toBe('quote-dialog')
++    expect(dialog?.order).toBe(3)
++    expect(dialog?.locale).toBe('quote')
++    const tracker = b.trackerEntry()
++    expect(tracker?.id).toBe('quote-paragraph')
++    expect(tracker?.order).toBe(4)
++    expect(tracker?.locale).toBe('quote')
++    const quote = b.ctx.locale.bind('quote')
++    expect(quote('dialog.title')).toBe('Quote message')
++    expect(quote('action.paragraph')).toBe('Quote this paragraph')
++  })
++
++  it('backs every entry of one Session with one shared surface, isolated per Session', async () => {
++    const b = await bench()
++    await b.fiber.await()
++    const first = b.actionEntry()?.inject?.(sid('s1'))
++    const firstDialog = b.dialogEntry()?.inject?.(sid('s1'))
++    const firstTracker = b.trackerEntry()?.inject?.(sid('s1'))
++    const second = b.actionEntry()?.inject?.(sid('s2'))
++    expect(first).toBeDefined()
++    expect(firstDialog).toBeDefined()
++    expect(firstTracker).toBeDefined()
++    expect(second).toBeDefined()
++    if (first === undefined || firstDialog === undefined || firstTracker === undefined) return
++    // Same Session: the dialog state the action opens is the one the overlay
++    // reads, and the paragraph tracker opens the same dialog.
++    first.open({ kind: 'assistant', messageId: undefined, turn: 1, step: 1, time: 1, text: 'hi', truncated: false })
++    expect(firstDialog.hooks.dialog.getSnapshot().open).toBe(true)
++    expect(first.hooks.dialog.getSnapshot().open).toBe(true)
++    first.open({ kind: 'assistant', messageId: undefined, turn: 2, step: 1, time: 2, text: 'para', truncated: false })
++    expect(firstDialog.hooks.dialog.getSnapshot().target?.text).toBe('para')
++    firstTracker.open({ kind: 'assistant', messageId: undefined, turn: 3, step: 1, time: 3, text: 'para quote', truncated: false })
++    expect(firstDialog.hooks.dialog.getSnapshot().target?.text).toBe('para quote')
++    // Other Session: untouched.
++    expect(second?.hooks.dialog.getSnapshot().open).toBe(false)
++    // The overlay edits and closes through its own verbs.
++    firstDialog.setComment('note')
++    expect(firstDialog.hooks.dialog.getSnapshot().comment).toBe('note')
++    firstDialog.close()
++    expect(first.hooks.dialog.getSnapshot().open).toBe(false)
++  })
++
++  it('registers the locale dictionaries on the fiber and retires the surfaces on dispose', async () => {
++    const b = await bench()
++    await b.fiber.await()
++    const surface = b.actionEntry()?.inject?.(sid('s1'))
++    surface?.open({ kind: 'assistant', messageId: undefined, turn: 1, step: 1, time: 1, text: 'hi', truncated: false })
++    expect(b.ctx.locale.bind('quote')('dialog.title')).toBe('Quote message')
++    await b.fiber.dispose()
++    expect(surface?.hooks.dialog.getSnapshot().open).toBe(false)
++    expect(b.ctx.slots.entries('conversation.chat.assistant-actions')).toHaveLength(0)
++  })
++
++  it('keeps the node half inert', () => {
++    expect(nodeApply).toBeTypeOf('function')
++    nodeApply()
++    expect(nodeApply()).toBeUndefined()
++  })
++})
+diff --git a/packages/client/ui-quote/tests/paragraph.client.spec.tsx b/packages/client/ui-quote/tests/paragraph.client.spec.tsx
+new file mode 100644
+index 0000000000..173bd2fbac
+--- /dev/null
++++ b/packages/client/ui-quote/tests/paragraph.client.spec.tsx
+@@ -0,0 +1,213 @@
++// @vitest-environment jsdom
++/**
++ * Paragraph quote tracker: the pure helpers (step anchors, text capping)
++ * and the hover behavior — a paragraph inside an assistant-step seat shows
++ * the margin box, a paragraph elsewhere or without text does not, and the
++ * click opens the dialog with the paragraph text and the step's anchors.
++ */
++import { cleanup, fireEvent, render, screen, act } from '@testing-library/react'
++import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
++import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import type { AssistantChatData, ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
++import { capParagraphText, ParagraphQuoteTracker, stepAnchorsOf } from '../src/client/paragraph.tsx'
++import type { ParagraphTrackerProps } from '../src/client/slots.ts'
++import { QUOTE_TEXT_CAP } from '../src/client/quote.ts'
++import { en } from '../src/client/locales.ts'
++
++afterEach(cleanup)
++
++const t = makeTranslate(en, commonEn)
++
++describe('stepAnchorsOf', () => {
++  it('resolves turn/step/time and the optional message id', () => {
++    const data = { turn: 5, step: 2, time: 1700000000000, finalNode: { messageId: 'm-9' } } as Partial<AssistantChatData>
++    expect(stepAnchorsOf(data)).toEqual({ turn: 5, step: 2, time: 1700000000000, messageId: 'm-9' })
++  })
++
++  it('falls back to the turn number when no step is recorded', () => {
++    const data: Partial<AssistantChatData> = { turn: 5, time: 1700000000000 }
++    expect(stepAnchorsOf(data)).toEqual({ turn: 5, step: 5, time: 1700000000000, messageId: undefined })
++  })
++
++  it('rejects payloads without turn or time', () => {
++    expect(stepAnchorsOf({ turn: 5 })).toBeUndefined()
++    expect(stepAnchorsOf({ time: 1700000000000 })).toBeUndefined()
++    expect(stepAnchorsOf(null)).toBeUndefined()
++    expect(stepAnchorsOf('assistant-step')).toBeUndefined()
++  })
++})
++
++describe('capParagraphText', () => {
++  it('trims and passes short paragraphs through', () => {
++    expect(capParagraphText('  hello  ')).toEqual({ text: 'hello', truncated: false })
++  })
++
++  it('caps long paragraphs at the shared quote cap', () => {
++    const text = 'x'.repeat(QUOTE_TEXT_CAP + 100)
++    const capped = capParagraphText(text)
++    expect(capped.truncated).toBe(true)
++    expect(capped.text.length).toBe(QUOTE_TEXT_CAP)
++  })
++})
++
++/** A chat snapshot exposing one assistant-step node under the given key. */
++const fakeChat = (key: string, data: unknown): ChatSnapshot => {
++  const map = new Map<string, { key: string; kind: string; data: unknown }>()
++  map.set(key, { key, kind: 'assistant-step', data })
++  return { nodes: map } as unknown as ChatSnapshot
++}
++
++interface BenchOptions {
++  data?: unknown
++  kind?: string
++  chatAbsent?: boolean
++}
++
++function bench(options: BenchOptions = {}) {
++  const open = vi.fn()
++  const data = options.data ?? { turn: 3, step: 1, time: 1700000000000, finalNode: { messageId: 'm-1' } }
++  const chat = options.chatAbsent ? undefined : fakeChat('k-step-1', data)
++  const useConversation = (selector: (state: { views: { get: (target: string) => unknown } }) => unknown) =>
++    selector({ views: { get: (target: string) => (target === 'chat' ? chat : undefined) } })
++  const props = { open, useConversation, t } as unknown as ParagraphTrackerProps
++  render(<ParagraphQuoteTracker {...props} />)
++  return { open }
++}
++
++/** Mount one seat wrapper with a paragraph, and stub its layout box. */
++function mountSeat({ key = 'k-step-1', kind = 'assistant-step', text = 'hello paragraph' }: { key?: string; kind?: string; text?: string } = {}) {
++  const fixture = document.createElement('div')
++  fixture.setAttribute('data-seat-fixture', '')
++  fixture.setAttribute('data-chat-anchor-key', key)
++  fixture.setAttribute('data-chat-flow-kind', kind)
++  fixture.innerHTML = `<p>${text}</p>`
++  document.body.appendChild(fixture)
++  const p = fixture.querySelector('p') as HTMLParagraphElement
++  const rect = { top: 120, left: 240, right: 900, bottom: 150, width: 660, height: 30, x: 240, y: 120, toJSON: () => rect }
++  vi.spyOn(p, 'getBoundingClientRect').mockReturnValue(rect as DOMRect)
++  return p
++}
++
++const box = () => document.querySelector('[data-dsw-quote-box]')
++
++beforeEach(() => {
++  vi.restoreAllMocks()
++})
++
++afterEach(() => {
++  for (const fixture of Array.from(document.querySelectorAll('[data-seat-fixture]'))) fixture.remove()
++})
++
++describe('ParagraphQuoteTracker', () => {
++  it('shows the margin box when a paragraph inside an assistant step is hovered', () => {
++    bench()
++    const p = mountSeat()
++    expect(box()).toBeNull()
++    fireEvent.mouseMove(p)
++    expect(box()).not.toBeNull()
++    expect(box()?.getAttribute('aria-label')).toBe(t('action.paragraph'))
++    // Hovering the same paragraph again is a no-op (same element, same rect).
++    const first = box()
++    fireEvent.mouseMove(p)
++    expect(box()).toBe(first)
++  })
++
++  it('clicking the box opens the dialog with the paragraph text and step anchors', () => {
++    const { open } = bench()
++    const p = mountSeat({ text: 'the exact sentence' })
++    fireEvent.mouseMove(p)
++    fireEvent.click(box() as Element)
++    expect(open).toHaveBeenCalledTimes(1)
++    expect(open).toHaveBeenCalledWith({
++      kind: 'assistant',
++      messageId: 'm-1',
++      turn: 3,
++      step: 1,
++      time: 1700000000000,
++      text: 'the exact sentence',
++      truncated: false,
++    })
++    expect(box()).toBeNull()
++  })
++
++  it('supports the still-streaming case: no blocks, no messageId, text as rendered', () => {
++    const { open } = bench({ data: { turn: 7, time: 1700000001234 } })
++    const p = mountSeat({ text: 'partial line being rendered' })
++    fireEvent.mouseMove(p)
++    fireEvent.click(box() as Element)
++    expect(open).toHaveBeenCalledWith(expect.objectContaining({
++      turn: 7,
++      step: 7,
++      time: 1700000001234,
++      messageId: undefined,
++      text: 'partial line being rendered',
++    }))
++  })
++
++  it('hides for paragraphs outside an assistant-step seat', () => {
++    bench()
++    const p = mountSeat({ kind: 'user', key: 'k-user-1' })
++    fireEvent.mouseMove(p)
++    expect(box()).toBeNull()
++  })
++
++  it('hides for paragraphs without text', () => {
++    bench()
++    const p = mountSeat({ text: '   ' })
++    fireEvent.mouseMove(p)
++    expect(box()).toBeNull()
++  })
++
++  it('lingers through the grace period after the pointer leaves, then hides', () => {
++    vi.useFakeTimers()
++    try {
++      bench()
++      const p = mountSeat()
++      fireEvent.mouseMove(p)
++      expect(box()).not.toBeNull()
++      const outside = document.createElement('div')
++      document.body.appendChild(outside)
++      fireEvent.mouseMove(outside)
++      // Within the grace window the box is still reachable.
++      expect(box()).not.toBeNull()
++      act(() => { vi.advanceTimersByTime(400) })
++      expect(box()).toBeNull()
++      outside.remove()
++    } finally {
++      vi.useRealTimers()
++    }
++  })
++
++  it('stays visible while the pointer rests on the box during the grace', () => {
++    vi.useFakeTimers()
++    try {
++      bench()
++      const p = mountSeat()
++      fireEvent.mouseMove(p)
++      const el = box()
++      expect(el).not.toBeNull()
++      if (el === null) return
++      // Pointer leaves the paragraph but lands on the box itself: no hide scheduled.
++      fireEvent.mouseMove(el)
++      act(() => { vi.advanceTimersByTime(1000) })
++      expect(box()).not.toBeNull()
++    } finally {
++      vi.useRealTimers()
++    }
++  })
++
++  it('hides when the step payload has no temporal anchors', () => {
++    bench({ data: { turn: 3 } })
++    const p = mountSeat()
++    fireEvent.mouseMove(p)
++    expect(box()).toBeNull()
++  })
++
++  it('does not render a box before any hover', () => {
++    bench()
++    mountSeat()
++    expect(box()).toBeNull()
++    expect(screen.queryByRole('button', { name: t('action.paragraph') })).toBeNull()
++  })
++})
+diff --git a/packages/client/ui-quote/tests/quote-actions.client.spec.tsx b/packages/client/ui-quote/tests/quote-actions.client.spec.tsx
+new file mode 100644
+index 0000000000..164510af48
+--- /dev/null
++++ b/packages/client/ui-quote/tests/quote-actions.client.spec.tsx
+@@ -0,0 +1,100 @@
++// @vitest-environment jsdom
++/**
++ * QuoteActions rendering: the icon opens the dialog with the step resolved
++ * from the seat owner's messageId (scanning the chat nodes for the matching
++ * assistant step), and stays inert when no step matches, the step has no
++ * text, or the chat snapshot is absent. Quoting is never gated on the
++ * composer state — clicking while the Session is busy is the steering case.
++ */
++import { cleanup, fireEvent, render, screen } from '@testing-library/react'
++import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
++import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
++import { afterEach, describe, expect, it, vi } from 'vitest'
++import type { AssistantChatData, ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
++import { QuoteActions } from '../src/client/actions.tsx'
++import type { QuoteActionProps } from '../src/client/slots.ts'
++import { en } from '../src/client/locales.ts'
++
++afterEach(cleanup)
++
++const t = makeTranslate(en, commonEn)
++
++const assistantData = (overrides: Partial<AssistantChatData> = {}): AssistantChatData => ({
++  status: 'closed',
++  turn: 12,
++  step: 1,
++  blocks: [{ kind: 'text', text: 'the quoted line' }],
++  time: 1700000000000,
++  finalNode: { messageId: 'm-42' },
++  ...overrides,
++} as AssistantChatData)
++
++/** A chat snapshot whose nodes Map the owner-messageId scan can iterate. */
++const fakeChat = (step: AssistantChatData, extra: unknown[] = []): ChatSnapshot => {
++  const map = new Map<string, { key: string; kind: string; data: unknown }>()
++  map.set('k-step-1', { key: 'k-step-1', kind: 'assistant-step', data: step })
++  for (const [i, data] of extra.entries()) map.set(`k-x-${i}`, { key: `k-x-${i}`, kind: 'turn-tail', data })
++  return { nodes: map } as unknown as ChatSnapshot
++}
++
++function bench(options: { data?: unknown; chatAbsent?: boolean; messageId?: string | number } = {}) {
++  const open = vi.fn()
++  const data = options.data ?? assistantData()
++  const chat = options.chatAbsent ? undefined : fakeChat(data as AssistantChatData)
++  const useConversation = (selector: (state: { views: { get: (target: string) => unknown } }) => unknown) =>
++    selector({ views: { get: (target: string) => (target === 'chat' ? chat : undefined) } })
++  const props = {
++    open,
++    messageId: options.messageId ?? 'm-42',
++    useConversation,
++    t,
++  } as unknown as QuoteActionProps
++  render(<QuoteActions {...props} />)
++  return { open }
++}
++
++const button = () => screen.getByRole('button', { name: t('action.quote') })
++
++describe('QuoteActions', () => {
++  it('opens the dialog with the step resolved by owner messageId', () => {
++    const { open } = bench()
++    fireEvent.click(button())
++    expect(open).toHaveBeenCalledTimes(1)
++    expect(open).toHaveBeenCalledWith({
++      kind: 'assistant',
++      messageId: 'm-42',
++      turn: 12,
++      step: 1,
++      time: 1700000000000,
++      text: 'the quoted line',
++      truncated: false,
++    })
++  })
++
++  it('still opens while the Session is busy (the steering case)', () => {
++    // No composer gate exists: the entry resolves purely from the snapshot.
++    const { open } = bench()
++    expect(button().hasAttribute('data-unavailable')).toBe(false)
++    expect(button().hasAttribute('aria-disabled')).toBe(false)
++    fireEvent.click(button())
++    expect(open).toHaveBeenCalledTimes(1)
++  })
++
++  it('stays inert when no step carries the owner messageId', () => {
++    const { open } = bench({ messageId: 'm-missing' })
++    fireEvent.click(button())
++    expect(open).not.toHaveBeenCalled()
++  })
++
++  it('stays inert when the step has no text', () => {
++    const { open } = bench({ data: assistantData({ blocks: [{ kind: 'reasoning', text: 'thinking' }] }) })
++    fireEvent.click(button())
++    expect(open).not.toHaveBeenCalled()
++  })
++
++  it('stays inert when the chat snapshot is absent', () => {
++    const { open } = bench({ chatAbsent: true })
++    fireEvent.click(button())
++    expect(open).not.toHaveBeenCalled()
++  })
++})
+diff --git a/packages/client/ui-quote/tests/quote-dialog.client.spec.tsx b/packages/client/ui-quote/tests/quote-dialog.client.spec.tsx
+new file mode 100644
+index 0000000000..52244d80e4
+--- /dev/null
++++ b/packages/client/ui-quote/tests/quote-dialog.client.spec.tsx
+@@ -0,0 +1,137 @@
++// @vitest-environment jsdom
++/**
++ * QuoteDialog rendering: closed until the surface opens it; the preview and
++ * the temporal header line; Send composes quote + comment + existing draft
++ * through setDraft + submit; To composer stages the same composition without
++ * submitting; typing routes through setComment and re-renders; the
++ * empty-text target shows the empty state with no send.
++ */
++import { useSyncExternalStore } from 'react'
++import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
++import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
++import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
++import { afterEach, describe, expect, it, vi } from 'vitest'
++import { buildTarget, composeDraft, type QuoteTarget } from '../src/client/quote.ts'
++import type { QuoteDialogProps } from '../src/client/slots.ts'
++import { QUOTE_CLOSED, type QuoteDialogState } from '../src/client/surface.ts'
++import { QuoteDialog } from '../src/client/dialog.tsx'
++import { en } from '../src/client/locales.ts'
++
++afterEach(cleanup)
++
++const t = makeTranslate(en, commonEn)
++
++const TARGET: QuoteTarget = buildTarget(
++  [{ kind: 'text', text: 'first line\nsecond line' }],
++  '8f3a2b',
++  12,
++  1,
++  1700000000000,
++)
++
++interface Bench {
++  setComment: ReturnType<typeof vi.fn>
++  close: ReturnType<typeof vi.fn>
++  setDraft: ReturnType<typeof vi.fn>
++  submit: ReturnType<typeof vi.fn>
++  setDialog: (state: QuoteDialogState) => void
++}
++
++/** One mutable dialog store behind a useSyncExternalStore-backed hook. */
++function bench(initial: QuoteDialogState = QUOTE_CLOSED, draft = ''): Bench {
++  let state = initial
++  const listeners = new Set<() => void>()
++  const notify = () => { for (const listener of [...listeners]) listener() }
++  const dialog = {
++    getSnapshot: () => state,
++    subscribe: (listener: () => void) => {
++      listeners.add(listener)
++      return () => { listeners.delete(listener) }
++    },
++  }
++  const useDialog = (selector: (next: QuoteDialogState) => unknown) =>
++    selector(useSyncExternalStore(dialog.subscribe, dialog.getSnapshot))
++  const setComment = vi.fn((text: string) => {
++    state = { ...state, comment: text }
++    notify()
++  })
++  const close = vi.fn(() => {
++    state = QUOTE_CLOSED
++    notify()
++  })
++  const setDraft = vi.fn()
++  const submit = vi.fn()
++  const useInput = (selector: (next: { phase: string; draft: string }) => unknown) =>
++    selector({ phase: 'plain', draft })
++  const props = {
++    useDialog,
++    setComment,
++    close,
++    useInput,
++    inputActions: { setDraft, submit },
++    t,
++  } as unknown as QuoteDialogProps
++  render(<QuoteDialog {...props} />)
++  return {
++    setComment,
++    close,
++    setDraft,
++    submit,
++    setDialog: (next: QuoteDialogState) => {
++      state = next
++      notify()
++    },
++  }
++}
++
++describe('QuoteDialog', () => {
++  it('renders nothing while closed', () => {
++    bench()
++    expect(screen.queryByRole('dialog')).toBeNull()
++  })
++
++  it('shows the quote preview and the temporal header when open', () => {
++    const { setDialog } = bench()
++    act(() => { setDialog({ open: true, target: TARGET, comment: '' }) })
++    const dialog = screen.getByRole('dialog')
++    const text = dialog.textContent ?? ''
++    expect(text).toContain('first line')
++    expect(text).toContain('second line')
++    expect(text).toContain('assistant · turn 12 · step 1')
++    expect(text).toContain('msg 8f3a2b')
++    expect(text).toContain(t('dialog.title'))
++  })
++
++  it('Send composes quote + comment + existing draft, submits, and closes', async () => {
++    const b = bench(QUOTE_CLOSED, 'my pending draft')
++    act(() => { b.setDialog({ open: true, target: TARGET, comment: '' }) })
++    fireEvent.change(screen.getByPlaceholderText(t('dialog.commentPlaceholder')), {
++      target: { value: 'this is right, i don\'t like this' },
++    })
++    expect(b.setComment).toHaveBeenLastCalledWith('this is right, i don\'t like this')
++    fireEvent.click(screen.getByRole('button', { name: t('dialog.send') }))
++    expect(b.setDraft).toHaveBeenCalledTimes(1)
++    expect(b.setDraft).toHaveBeenCalledWith(composeDraft(TARGET, 'this is right, i don\'t like this', 'my pending draft'))
++    expect(b.submit).toHaveBeenCalledTimes(1)
++    expect(b.close).toHaveBeenCalledTimes(1)
++  })
++
++  it('To composer stages the same composition without submitting', () => {
++    const b = bench(QUOTE_CLOSED, '')
++    act(() => { b.setDialog({ open: true, target: TARGET, comment: '' }) })
++    fireEvent.click(screen.getByRole('button', { name: t('dialog.stage') }))
++    expect(b.setDraft).toHaveBeenCalledTimes(1)
++    expect(b.setDraft).toHaveBeenCalledWith(composeDraft(TARGET, '', ''))
++    expect(b.submit).not.toHaveBeenCalled()
++    expect(b.close).toHaveBeenCalledTimes(1)
++  })
++
++  it('shows the empty state with no send button for a text-less target', () => {
++    const { setDialog } = bench()
++    act(() => { setDialog({ open: true, target: buildTarget([], undefined, 2, 1, 1700000000000), comment: '' }) })
++    expect(screen.getByRole('dialog').textContent).toContain(t('dialog.empty'))
++    expect(screen.queryByRole('button', { name: t('dialog.send') })).toBeNull()
++    // The modal's own close button and the footer close button share the label.
++    expect(screen.getAllByRole('button', { name: t('dialog.close') }).length).toBeGreaterThanOrEqual(1)
++  })
++})
+diff --git a/packages/client/ui-quote/tests/quote.client.spec.ts b/packages/client/ui-quote/tests/quote.client.spec.ts
+new file mode 100644
+index 0000000000..2aeb97fb7c
+--- /dev/null
++++ b/packages/client/ui-quote/tests/quote.client.spec.ts
+@@ -0,0 +1,103 @@
++/**
++ * Pure quote logic: text extraction (text blocks only, reasoning excluded),
++ * the 4000-char cap, the block format with its temporal header, and the
++ * draft composition order (quote, comment, existing draft).
++ */
++import { describe, expect, it } from 'vitest'
++import type { AssistantBlock } from '@deepseek-ai/dsh-client-ui-conversation/client'
++import {
++  QUOTE_MARKER_CLOSE, QUOTE_TEXT_CAP, buildQuoteBlock, buildTarget, composeDraft, formatQuoteTime, quoteTextOf,
++} from '../src/client/quote.ts'
++
++const blocks = (texts: readonly (string | undefined)[], extra: readonly AssistantBlock[] = []): AssistantBlock[] => [
++  ...texts.map((text, i): AssistantBlock => text === undefined
++    ? { kind: 'reasoning', text: `thinking ${i}` }
++    : { kind: 'text', text }),
++  ...extra,
++]
++
++describe('quoteTextOf', () => {
++  it('joins only the text blocks, blank-line separated, in order', () => {
++    expect(quoteTextOf(blocks(['a', undefined, 'b']))).toBe('a\n\nb')
++  })
++
++  it('yields empty text for reasoning-only steps', () => {
++    expect(quoteTextOf(blocks([undefined]))).toBe('')
++  })
++
++  it('keeps reasoning and tool-call blocks out but keeps the text around them', () => {
++    const mixed: AssistantBlock[] = [
++      { kind: 'text', text: 'before' },
++      { kind: 'reasoning', text: 'inner thought' },
++      { kind: 'tool-call', callId: 'c-1', name: 'bash', argsRaw: '{}' },
++      { kind: 'text', text: 'after' },
++    ]
++    expect(quoteTextOf(mixed)).toBe('before\n\nafter')
++  })
++})
++
++describe('buildTarget', () => {
++  it('carries the step anchors verbatim', () => {
++    const target = buildTarget(blocks(['line']), 'm-1', 12, 1, 1700000000000)
++    expect(target).toMatchObject({ kind: 'assistant', messageId: 'm-1', turn: 12, step: 1, time: 1700000000000 })
++    expect(target.text).toBe('line')
++    expect(target.truncated).toBe(false)
++  })
++
++  it('caps the text at the cap and marks truncation', () => {
++    const long = 'x'.repeat(QUOTE_TEXT_CAP + 500)
++    const target = buildTarget(blocks([long]), undefined, 1, undefined, 1)
++    expect(target.text).toHaveLength(QUOTE_TEXT_CAP)
++    expect(target.truncated).toBe(true)
++    expect(target.messageId).toBeUndefined()
++    expect(target.step).toBeUndefined()
++  })
++})
++
++describe('formatQuoteTime', () => {
++  it('renders local ISO with offset at second precision', () => {
++    const ms = Date.parse('2026-09-18T12:00:00.000Z')
++    expect(formatQuoteTime(ms)).toMatch(/^2026-09-18T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/)
++    // The wall clock is local, not UTC.
++    expect(formatQuoteTime(ms)).not.toContain('12:00:00+00:00')
++  })
++})
++
++describe('buildQuoteBlock', () => {
++  it('opens with the temporal header and closes with the marker', () => {
++    const target = buildTarget(blocks(['first', 'second']), '8f3a2b', 12, 1, 1700000000000)
++    const block = buildQuoteBlock(target)
++    const lines = block.split('\n')
++    expect(lines[0]).toMatch(/^\[Quoted from: assistant message · turn 12 · step 1 · \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2} · msg 8f3a2b\]$/)
++    expect(lines[1]).toBe('> first')
++    expect(lines[2]).toBe('> ')
++    expect(lines[3]).toBe('> second')
++    expect(lines[lines.length - 1]).toBe(QUOTE_MARKER_CLOSE)
++  })
++
++  it('omits the step and message id when absent and flags truncation', () => {
++    const target = buildTarget(blocks(['x'.repeat(QUOTE_TEXT_CAP + 1)]), undefined, 7, undefined, 1)
++    const header = buildQuoteBlock(target).split('\n')[0]
++    expect(header).toMatch(/^\[Quoted from: assistant message · turn 7 · truncated · \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}\]$/)
++    expect(header).not.toContain('step')
++    expect(header).not.toContain('msg')
++  })
++})
++
++describe('composeDraft', () => {
++  const target = buildTarget(blocks(['quoted line']), undefined, 1, 1, 1700000000000)
++
++  it('sends the quote alone when nothing else is present', () => {
++    expect(composeDraft(target, '', '')).toBe(buildQuoteBlock(target))
++  })
++
++  it('orders quote, comment, existing draft with blank-line separators', () => {
++    expect(composeDraft(target, ' i disagree ', 'my draft text')).toBe(
++      `${buildQuoteBlock(target)}\n\ni disagree\n\nmy draft text`,
++    )
++  })
++
++  it('skips the blank comment and the blank draft', () => {
++    expect(composeDraft(target, '   ', '  ')).toBe(buildQuoteBlock(target))
++  })
++})
+diff --git a/packages/client/ui-quote/tests/surface.client.spec.ts b/packages/client/ui-quote/tests/surface.client.spec.ts
+new file mode 100644
+index 0000000000..f424546d10
+--- /dev/null
++++ b/packages/client/ui-quote/tests/surface.client.spec.ts
+@@ -0,0 +1,55 @@
++/**
++ * QuoteSurface: the per-session dialog state transitions shared by the
++ * action entry and the overlay entry.
++ */
++import { describe, expect, it } from 'vitest'
++import { QuoteSurface, QUOTE_CLOSED } from '../src/client/surface.ts'
++import { buildTarget } from '../src/client/quote.ts'
++
++const target = buildTarget([{ kind: 'text', text: 'hello' }], 'm-1', 3, 1, 1700000000000)
++
++describe('QuoteSurface', () => {
++  it('rests closed', () => {
++    const surface = new QuoteSurface()
++    expect(surface.state.getSnapshot()).toEqual(QUOTE_CLOSED)
++  })
++
++  it('opens with the target and an empty comment', () => {
++    const surface = new QuoteSurface()
++    surface.open(target)
++    expect(surface.state.getSnapshot()).toEqual({ open: true, target, comment: '' })
++  })
++
++  it('replaces an open target, resetting the comment', () => {
++    const surface = new QuoteSurface()
++    surface.open(target)
++    surface.setComment('old comment')
++    const other = buildTarget([{ kind: 'text', text: 'other' }], 'm-2', 4, 2, 1700000000001)
++    surface.open(other)
++    expect(surface.state.getSnapshot()).toEqual({ open: true, target: other, comment: '' })
++  })
++
++  it('edits the comment and closes cleanly', () => {
++    const surface = new QuoteSurface()
++    surface.open(target)
++    surface.setComment('this is right, i don\'t like this')
++    expect(surface.state.getSnapshot().comment).toBe('this is right, i don\'t like this')
++    surface.close()
++    expect(surface.state.getSnapshot()).toEqual(QUOTE_CLOSED)
++  })
++
++  it('ignores a comment write that keeps the value', () => {
++    const surface = new QuoteSurface()
++    surface.open(target)
++    const before = surface.state.getSnapshot()
++    surface.setComment('')
++    expect(surface.state.getSnapshot()).toBe(before)
++  })
++
++  it('disposes into the closed state', () => {
++    const surface = new QuoteSurface()
++    surface.open(target)
++    surface.dispose()
++    expect(surface.state.getSnapshot()).toEqual(QUOTE_CLOSED)
++  })
++})
+diff --git a/packages/client/ui-quote/tsconfig.json b/packages/client/ui-quote/tsconfig.json
+new file mode 100644
+index 0000000000..3435fe8427
+--- /dev/null
++++ b/packages/client/ui-quote/tsconfig.json
+@@ -0,0 +1,39 @@
++{
++  "extends": "../../../tsconfig.base.client.json",
++  "compilerOptions": {
++    "rootDir": "src",
++    "outDir": "lib/types"
++  },
++  "include": [
++    "src"
++  ],
++  "references": [
++    {
++      "path": "../../../vendor/cordis"
++    },
++    {
++      "path": "../../core/session"
++    },
++    {
++      "path": "../locale/tsconfig.client.json"
++    },
++    {
++      "path": "../store"
++    },
++    {
++      "path": "../ui-chat/tsconfig.client.json"
++    },
++    {
++      "path": "../ui-conversation/tsconfig.client.json"
++    },
++    {
++      "path": "../ui-primitives"
++    },
++    {
++      "path": "../ui-renderer"
++    },
++    {
++      "path": "../ui-slots"
++    }
++  ]
++}
+diff --git a/packages/client/ui-quote/tsdown.config.ts b/packages/client/ui-quote/tsdown.config.ts
+new file mode 100644
+index 0000000000..02f6fe56fb
+--- /dev/null
++++ b/packages/client/ui-quote/tsdown.config.ts
+@@ -0,0 +1,3 @@
++import { clientBundle } from '../tsdown.client.ts'
++
++export default clientBundle('@deepseek-ai/dsh-client-ui-quote', ['lib/types/index.js'])
+diff --git a/tsconfig.client.json b/tsconfig.client.json
+index 53a7c72cc2..bacb9ac008 100644
+--- a/tsconfig.client.json
++++ b/tsconfig.client.json
+@@ -121,6 +121,7 @@
+     { "path": "./packages/client/ui-agent-preset" },
+     { "path": "./packages/client/ui-permission-presets" },
+     { "path": "./packages/client/ui-plan" },
++    { "path": "./packages/client/ui-quote" },
+     { "path": "./packages/client/ui-settings-plugins" },
+     { "path": "./packages/client/ui-settings-shell" },
+     { "path": "./packages/client/ui-settings-agent-loop" },
