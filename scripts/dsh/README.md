@@ -16,6 +16,25 @@ design docs. The live locations on the agent box are listed per file below.
 | `docs/dsh-merge-queued-messages.md` | design + capability notes for the merge-queued feature (dev doc) | `~/.dsh/docs/dsh-merge-queued-messages.md` |
 | `docs/dsh-quote-selection.md` | design + behavior notes for the quote surface (dev doc) | `~/.dsh/docs/dsh-quote-selection.md` |
 
+## video-scene-extractor-v2/ — bundle-skill replacement kit (2026-10-05)
+
+Different animal from the checkout patches above: the `dsh-video-scene-extractor`
+bundle (github erosDiffusion/dsh @ 7dc012c1) ships a skill whose runbook/scripts
+had 12 invocation bugs (all reproduced in a live run; fixes in the kit's
+`CHANGELOG.md`). The bundle hardcodes its skill path, so v2 is mounted by
+**profile-patch surgery**, not a checkout patch:
+
+| file | what it is | live location on the agent box |
+| --- | --- | --- |
+| `skills/video-scene-extractor/SKILL.md` + `scripts/*.py` | v2 skill: corrected runbook + 7 patched pipeline scripts (mad_scan `--quiet` + data/ layout, consolidate crash-guard + onsets.txt, extract_frames bare-number fix, montage makedirs, hashcheck raw-pipe verify mode, check_ffmpeg false-alarm fix) | `~/Apps/deepseek-workspace/dsh-video-scene-extractor-v2/skills/` |
+| `plugin/index.js` | local host entry replacing the bundle row: registers `DSH_VIDEO_SKILL_DIR` + `/video-extractor` pointing at the v2 skill | `~/Apps/deepseek-workspace/dsh-video-scene-extractor-v2/plugin/` |
+| `profile-patch-block.yml` | the exact block appended to the web-lite profile patch: disable bundle host row, insert v2 host row, FULL-config override of the preset row (cordis gotcha: a per-id override REPLACES the whole `config` — a partial one silently guts the preset; regeneration recipe in CHANGELOG.md) | tail of `~/.dsh/profiles/web-lite/cordis.patch.yml` |
+| `CHANGELOG.md` | the 12 fixes + end-to-end proof + regeneration recipe + publish path | `~/Apps/deepseek-workspace/dsh-video-scene-extractor-v2/CHANGELOG.md` |
+
+If the upstream bundle ever ships these fixes, delete the profile-patch block and
+this kit becomes redundant. Verified via `pnpm dsh --profile web-lite --dump-config`
+(2026-10-05): bundle row disabled, v2 row mounted, preset intact with v2 skill dir.
+
 ## Provenance
 
 - Archived 2026-10-03 from the agent box (`/home/oem`), paths above. Patches in
