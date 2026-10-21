@@ -47,6 +47,8 @@ curl -sX POST 127.0.0.1:8080/v1/vram -H 'Content-Type: application/json' -d '{"r
 3. Never process-kill the engine/vision sidecar; VRAM moves **only** via this API.
 4. In-graph alternative: `StrataFlexDown` / `StrataReclaim` pass-through nodes
    (`custom_nodes/comfyui-strata-flex`) embed the same calls inside a workflow (flow 17 pattern).
+   GUI buttons: `dsh-strata-flex` bundle adds lower/reclaim buttons to the DSH web GUI composer
+   footer (source archived at `projects/dsh-customizations/bundles/dsh-strata-flex/`).
 5. `agent-park.sh` / `agent-resume.sh` / park-thin = superseded studio-era scripts — do not call.
 6. While flexed low, agent inference is slower (experts stream from RAM) — acceptable; it worked
    through full H3 renders (2026-10-20, ~12 GB state).

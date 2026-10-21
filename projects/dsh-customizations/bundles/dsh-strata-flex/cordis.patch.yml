@@ -1,0 +1,19 @@
+# dsh-strata-flex — two footer buttons ("lower agent VRAM" / "reclaim") for the
+# Strata brain's elastic expert cache (protocol: ~/.dsh/AGENTS.md "Strata flex
+# protocol"; API notes: llm-playground scripts/strata-vram-flex.md).
+#
+# The host row registers /api/strata-flex (server-side calls to the Strata
+# engine — no Origin header, so the engine's own-origin guard accepts them;
+# the browser talks only to the DSH server, same-origin).
+#
+#   flex_reserve_mib  — the floor: keep this MiB free for Comfy (22016 -> ~512
+#                       experts resident, engine ~10 GB, ~21 GB window)
+#   busy_reserve_mib  — mid-flow target when a Comfy flow runs (14336 -> engine ~18 GB)
+#   reclaim           — POST reserve_mib null = the engine's start reserve
+- insert:
+    - id: strata-flex
+      name: dsh-strata-flex
+      config:
+        strata_url: http://127.0.0.1:8080
+        flex_reserve_mib: 22016
+        busy_reserve_mib: 14336
