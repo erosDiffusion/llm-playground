@@ -2,7 +2,7 @@
 
 - source: `$HOME/Progetti/ComfyUI/custom_nodes` (local studio install, 8188 box)
 - generated: 2026-09-06 by oem-agent
-- entries: 90 directories
+- entries: 90 directories — +1: ComfyUI-DLSS5NR-Wine added 2026-10-21
 
 | node | origin | commit | last change |
 | --- | --- | --- | --- |
@@ -19,6 +19,7 @@
 | comfyui_dagthomas | https://github.com/dagthomas/comfyui_dagthomas | 469fdd6 | 2026-08-30 |
 | comfyui-depthanythingv2 | (bundled with ComfyUI core, not a standalone pack) | — | — |
 | comfyui-depthcrafter-nodes | (bundled with ComfyUI core, not a standalone pack) | — | — |
+| ComfyUI-DLSS5NR-Wine | https://github.com/LQCCS/ComfyUI-DLSS5NR-Wine | 7abe190 | 2026-10-21 (installed; native host/bridge/shim built locally from kos94ok source + preset patch, NOT the prebuilt tarball; runtime tree `/home/oem/Progetti/dlss5nr`, GE-Proton+prefix `/home/oem/Progetti/dlss5`; NVIDIA DLLs self-sourced) |
 | comfyui-easy-use | (bundled with ComfyUI core, not a standalone pack) | — | — |
 | ComfyUI-enricos-nodes | https://github.com/erosDiffusion/ComfyUI-enricos-nodes | b34ba0e | 2026-08-02 |
 | ComfyUI-erosdiffusion-sigil | https://github.com/erosDiffusion/ComfyUI-erosdiffusion-sigil.git | d3ef8e0 | 2026-08-16 |
