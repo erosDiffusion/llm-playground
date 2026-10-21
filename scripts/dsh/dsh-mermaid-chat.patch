@@ -1,0 +1,467 @@
+diff --git a/packages/client/ui-primitives/package.json b/packages/client/ui-primitives/package.json
+index 57d14d2819..c3601b4a7a 100644
+--- a/packages/client/ui-primitives/package.json
++++ b/packages/client/ui-primitives/package.json
+@@ -34,6 +34,7 @@
+     "react-dom": "^18.2.0",
+     "anser": "^2.3.5",
+     "katex": "^0.18.7",
++    "mermaid": "11.17.2",
+     "micromark-core-commonmark": "^2.0.3",
+     "micromark-util-character": "^2.1.1",
+     "micromark-util-classify-character": "^2.0.1",
+diff --git a/packages/client/ui-primitives/src/markdown/MermaidBlock.module.css b/packages/client/ui-primitives/src/markdown/MermaidBlock.module.css
+new file mode 100644
+index 0000000000..490636229a
+--- /dev/null
++++ b/packages/client/ui-primitives/src/markdown/MermaidBlock.module.css
+@@ -0,0 +1,13 @@
++/* Mermaid diagrams: centered, scrollable when wider than the column, and
++   never wider than their container. */
++
++.root {
++  margin: 16px 0;
++  overflow-x: auto;
++  text-align: center;
++}
++
++.root svg {
++  max-width: 100%;
++  height: auto;
++}
+diff --git a/packages/client/ui-primitives/src/markdown/MermaidBlock.tsx b/packages/client/ui-primitives/src/markdown/MermaidBlock.tsx
+new file mode 100644
+index 0000000000..eb596b0783
+--- /dev/null
++++ b/packages/client/ui-primitives/src/markdown/MermaidBlock.tsx
+@@ -0,0 +1,78 @@
++/**
++ * Mermaid fence renderer: a settled ```mermaid fence becomes a diagram.
++ * The fence's CodeBlock is the default presentation — the diagram replaces
++ * it only once rendered, and a parse failure leaves the code block in place
++ * permanently, so the fallback needs no new chrome strings (the fence's
++ * localized copy already exists). Streaming fences never reach this
++ * component: like TeX, a half-typed diagram stays literal code until the
++ * block settles.
++ *
++ * The mermaid engine is dynamically imported on first use, so it never
++ * enters the initial bundle. `securityLevel: 'strict'` keeps untrusted
++ * diagram sources sanitized (labels escaped, click handlers and scripts
++ * disabled), and the returned SVG is mapped through the shared
++ * DOMParser→React path (dom-to-react.ts) — no HTML string enters the DOM.
++ *
++ * Mermaid bakes colors at render time, so the theme is resolved from the
++ * document's theme-source attribute (set by ui-theme's boot script) with a
++ * `prefers-color-scheme` fallback for `system`; a theme change re-renders
++ * diagrams on their next mount, not live.
++ */
++
++import { useEffect, useState } from 'react'
++import type { ReactNode } from 'react'
++import { domToReact } from './dom-to-react.ts'
++import css from './MermaidBlock.module.css'
++
++let renderSeq = 0
++let initializedTheme: string | null = null
++
++/** Resolve the mermaid theme name from the document's theme signals. */
++function diagramTheme(): 'dark' | 'default' {
++  const preference = document.documentElement.dataset['dsThemeSource']
++  if (preference === 'dark') return 'dark'
++  if (preference === 'light') return 'default'
++  // Same absent-media-query guard ui-theme uses: environments without
++  // matchMedia resolve to the light theme.
++  return typeof window.matchMedia === 'function'
++    && window.matchMedia('(prefers-color-scheme: dark)').matches
++    ? 'dark' : 'default'
++}
++
++/** Render one diagram source to its SVG string; rejects on parse errors. */
++async function renderDiagram(code: string): Promise<string> {
++  const { default: mermaid } = await import('mermaid')
++  const theme = diagramTheme()
++  if (initializedTheme !== theme) {
++    initializedTheme = theme
++    mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme })
++  }
++  const { svg } = await mermaid.render(`dsh-mermaid-${++renderSeq}`, code)
++  return svg
++}
++
++/**
++ * Render one settled mermaid fence, falling back to its code block until
++ * (and unless) a diagram materializes.
++ * @param code - The fence source.
++ * @param fallback - The fence's CodeBlock element, shown while pending and
++ * forever when the source does not parse.
++ */
++export function MermaidBlock({ code, fallback }: { code: string; fallback: ReactNode }): ReactNode {
++  const [svg, setSvg] = useState<string | null>(null)
++  useEffect(() => {
++    let alive = true
++    renderDiagram(code).then(
++      (value) => { if (alive) setSvg(value) },
++      () => { /* parse failure: the fallback code block stays */ },
++    )
++    return () => { alive = false }
++  }, [code])
++  if (svg === null) return fallback
++  const parsed = new DOMParser().parseFromString(svg, 'text/html')
++  return (
++    <div className={css.root} data-mermaid-diagram>
++      {[...parsed.body.childNodes].map((node, index) => domToReact(node, index))}
++    </div>
++  )
++}
+diff --git a/packages/client/ui-primitives/src/markdown/dom-to-react.ts b/packages/client/ui-primitives/src/markdown/dom-to-react.ts
+new file mode 100644
+index 0000000000..66d9e28f7b
+--- /dev/null
++++ b/packages/client/ui-primitives/src/markdown/dom-to-react.ts
+@@ -0,0 +1,47 @@
++/**
++ * Shared DOM-to-React mapper for library-generated markup strings (KaTeX's
++ * span/MathML tree, Mermaid's SVG). These libraries emit serialized markup
++ * with no raw user HTML, so the browser's own parser (`DOMParser`) plus this
++ * element mapping keeps the renderer's "no HTML string enters the DOM"
++ * discipline without `dangerouslySetInnerHTML`.
++ */
++
++import { createElement } from 'react'
++import type { CSSProperties, ReactNode } from 'react'
++
++/**
++ * Convert one inline `style` attribute string into React's style object.
++ * The generating libraries emit only plain kebab-case declarations (no
++ * custom properties and no nameless declarations), so camel-casing the
++ * property is the whole mapping.
++ */
++function styleObject(css: string): CSSProperties {
++  const style: Record<string, string> = {}
++  for (const declaration of css.split(';')) {
++    const colon = declaration.indexOf(':')
++    if (colon === -1) continue
++    const name = declaration.slice(0, colon).trim()
++    const key = name.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())
++    style[key] = declaration.slice(colon + 1).trim()
++  }
++  return style
++}
++
++/** Map one parsed DOM node onto a React element (text nodes pass through). */
++export function domToReact(node: ChildNode, key: number): ReactNode {
++  if (node.nodeType === Node.TEXT_NODE) return node.textContent
++  /* v8 ignore next 2 -- the generating libraries' serialized vocabulary is
++     elements and text; other node kinds cannot appear in their output. */
++  if (node.nodeType !== Node.ELEMENT_NODE) return null
++  const element = node as Element
++  const props: Record<string, unknown> = { key }
++  for (const attribute of element.attributes) {
++    if (attribute.name === 'class') props['className'] = attribute.value
++    else if (attribute.name === 'style') props['style'] = styleObject(attribute.value)
++    else props[attribute.name] = attribute.value
++  }
++  const children = [...element.childNodes].map(domToReact)
++  return children.length === 0
++    ? createElement(element.localName, props)
++    : createElement(element.localName, props, ...children)
++}
+diff --git a/packages/client/ui-primitives/src/markdown/katex.tsx b/packages/client/ui-primitives/src/markdown/katex.tsx
+index 45c1226b83..fc767a7a13 100644
+--- a/packages/client/ui-primitives/src/markdown/katex.tsx
++++ b/packages/client/ui-primitives/src/markdown/katex.tsx
+@@ -15,45 +15,9 @@
+  * tag name regardless of namespace.
+  */
+ 
+-import { createElement } from 'react'
+-import type { CSSProperties, ReactNode } from 'react'
++import type { ReactNode } from 'react'
+ import katex from 'katex'
+-
+-/**
+- * Convert one inline `style` attribute string into React's style object.
+- * KaTeX emits only plain kebab-case declarations (no custom properties and no
+- * nameless declarations), so camel-casing the property is the whole mapping.
+- */
+-function styleObject(css: string): CSSProperties {
+-  const style: Record<string, string> = {}
+-  for (const declaration of css.split(';')) {
+-    const colon = declaration.indexOf(':')
+-    if (colon === -1) continue
+-    const name = declaration.slice(0, colon).trim()
+-    const key = name.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())
+-    style[key] = declaration.slice(colon + 1).trim()
+-  }
+-  return style
+-}
+-
+-/** Map one parsed DOM node onto a React element (text nodes pass through). */
+-function domToReact(node: ChildNode, key: number): ReactNode {
+-  if (node.nodeType === Node.TEXT_NODE) return node.textContent
+-  /* v8 ignore next 2 -- KaTeX output holds only elements and text; other
+-     node kinds cannot appear in its serialized vocabulary. */
+-  if (node.nodeType !== Node.ELEMENT_NODE) return null
+-  const element = node as Element
+-  const props: Record<string, unknown> = { key }
+-  for (const attribute of element.attributes) {
+-    if (attribute.name === 'class') props['className'] = attribute.value
+-    else if (attribute.name === 'style') props['style'] = styleObject(attribute.value)
+-    else props[attribute.name] = attribute.value
+-  }
+-  const children = [...element.childNodes].map(domToReact)
+-  return children.length === 0
+-    ? createElement(element.localName, props)
+-    : createElement(element.localName, props, ...children)
+-}
++import { domToReact } from './dom-to-react.ts'
+ 
+ /**
+  * Render TeX source to React elements through KaTeX.
+diff --git a/packages/client/ui-primitives/src/markdown/render.tsx b/packages/client/ui-primitives/src/markdown/render.tsx
+index cdb9afcbda..8edc31b061 100644
+--- a/packages/client/ui-primitives/src/markdown/render.tsx
++++ b/packages/client/ui-primitives/src/markdown/render.tsx
+@@ -6,8 +6,10 @@
+  *
+  * External link and image destinations pass a protocol allowlist; settled
+  * local file links use an explicit owner callback. Images additionally require
+- * absolute HTTP(S), raw HTML renders as literal text (no HTML enters the
+- * DOM), and KaTeX runs without trusted commands. Fragment-anchor URLs fail
++ * absolute HTTP(S) — except image URLs whose path ends in a known video
++ * extension (.mp4/.webm/.ogv), which render as a controls-enabled <video>
++ * with the same allowlist — raw HTML renders as literal text (no HTML enters
++ * the DOM), and KaTeX runs without trusted commands. Fragment-anchor URLs fail
+  * the allowlist, so footnote references and back-references render as plain
+  * text rather than in-page links.
+  *
+@@ -26,6 +28,7 @@ import type { CodeToolbarLabels } from '../CodeToolbar.tsx'
+ import { CodeBlock } from './CodeBlock.tsx'
+ import { parseFileLink } from './file-link.ts'
+ import { renderTexToReact } from './katex.tsx'
++import { MermaidBlock } from './MermaidBlock.tsx'
+ import { LinkIconMedium, classifyLinkPath } from '../LinkIcon.tsx'
+ import { useMarkdownDelegate } from './MarkdownDelegate.tsx'
+ import { HoverCard } from '../HoverCard.tsx'
+@@ -91,11 +94,27 @@ function vocabularyImageUrl(url: string): string | undefined {
+   }
+ }
+ 
++/** Path extensions that render an image-syntax destination as a <video> player instead of an <img>. */
++const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.ogv'])
++
++function remoteVideoUrl(url: string): string | undefined {
++  try {
++    const parsed = new URL(url)
++    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined
++    const dot = parsed.pathname.lastIndexOf('.')
++    if (dot === -1) return undefined
++    return VIDEO_EXTENSIONS.has(parsed.pathname.slice(dot).toLowerCase()) ? url : undefined
++  } catch {
++    // Same single failure mode as above: not an absolute URL.
++    return undefined
++  }
++}
++
+ /**
+  * The displayable source for one image destination: absolute HTTP(S) as
+  * authored, otherwise the context's local-path vocabulary when it vouches for
+- * the destination. Either miss leaves the authored fallback (alt text) to the
+- * caller.
++ * the destination. Either miss leaves the authored fallback (alt text) to
++ * the caller.
+  * @param url - The authored markdown destination.
+  * @param pathImages - Rewriting vocabulary, when the render pass has one.
+  * @returns The displayable image URL, or undefined.
+@@ -390,7 +409,7 @@ function renderCode(node: Md.Code, key: Key, context: MarkdownRenderContext): Re
+     // its text extraction saw the code block's trailing newline.
+     return <Fragment key={key}>{renderTexToReact(`${node.value}\n`, true)}</Fragment>
+   }
+-  return (
++  const codeBlock = (
+     <CodeBlock
+       key={key}
+       // The replaced hast pipeline appended one synthetic newline that
+@@ -409,6 +428,12 @@ function renderCode(node: Md.Code, key: Key, context: MarkdownRenderContext): Re
+       toolbarLabels={context.labels.code.toolbarLabels}
+     />
+   )
++  if (!context.streaming && lang === 'mermaid') {
++    // ```mermaid fences become diagrams once settled (same settle gate as
++    // math); the code block above is the pending and failed-parse view.
++    return <MermaidBlock key={key} code={node.value} fallback={codeBlock} />
++  }
++  return codeBlock
+ }
+ 
+ /** A list is loose when it or any of its items is spread; every item then keeps its paragraphs. */
+@@ -623,6 +648,22 @@ function inlineCodeHttpUrl(value: string): string | undefined {
+ }
+ 
+ function renderImage(url: string, alt: string, key: Key, context: MarkdownRenderContext): ReactNode {
++  const sanitized = sanitizeUrl(normalizeUri(url))
++  const videoSrc = remoteVideoUrl(sanitized)
++  if (videoSrc !== undefined) {
++    // React's VideoHTMLAttributes omit the global referrerpolicy attribute; the
++    // protocol allowlist + absolute-HTTP(S) check above are the real gate, so
++    // the player is rendered without it rather than widening the element type.
++    return (
++      <video
++        key={key}
++        className={css.image}
++        src={videoSrc}
++        controls
++        preload="metadata"
++      />
++    )
++  }
+   return <MarkdownImage key={`${key}:${url}`} destination={url} alt={alt}
+     pathImages={context.pathImages} streaming={context.streaming} inLink={context.inLink === true} />
+ }
+diff --git a/packages/client/ui-primitives/tests/markdown.client.spec.tsx b/packages/client/ui-primitives/tests/markdown.client.spec.tsx
+index c655a007d2..d0c70494ef 100644
+--- a/packages/client/ui-primitives/tests/markdown.client.spec.tsx
++++ b/packages/client/ui-primitives/tests/markdown.client.spec.tsx
+@@ -332,6 +332,37 @@ describe('MarkdownText', () => {
+     }
+   })
+ 
++  it('renders video-extension image URLs as a bounded <video> player', () => {
++    const markdown = [
++      '![orbit](http://127.0.0.1:8765/cube-orbit.mp4)',
++      '![stream](https://example.com/clip.WEBM?token=abc)',
++      '![still](https://example.com/photo.png)',
++    ].join('\n\n')
++    const { container } = render(<MarkdownText text={markdown} />)
++    const videos = [...container.querySelectorAll('video')]
++    expect(videos.map(video => video.getAttribute('src'))).toEqual([
++      'http://127.0.0.1:8765/cube-orbit.mp4',
++      'https://example.com/clip.WEBM?token=abc',
++    ])
++    for (const video of videos) {
++      expect(video.getAttribute('controls')).toBe('')
++      expect(video.getAttribute('preload')).toBe('metadata')
++    }
++    const images = [...container.querySelectorAll('img')]
++    expect(images.map(image => image.getAttribute('src'))).toEqual(['https://example.com/photo.png'])
++  })
++
++  it('keeps unsafe or relative video URLs inert', () => {
++    const markdown = [
++      '![local](private.mp4)',
++      '![file](file:///workspace/private.mp4)',
++      '![script](javascript:alert(1))',
++    ].join('\n\n')
++    const { container } = render(<MarkdownText text={markdown} />)
++    expect(container.querySelector('video')).toBeNull()
++    expect(container.querySelector('img')).toBeNull()
++  })
++
+   it('neutralizes raw HTML, unsafe or relative links, and unsupported images', () => {
+     const markdown = [
+       '<script>globalThis.compromised = true</script>',
+diff --git a/packages/client/ui-primitives/tests/mermaid.client.spec.tsx b/packages/client/ui-primitives/tests/mermaid.client.spec.tsx
+new file mode 100644
+index 0000000000..d291964b15
+--- /dev/null
++++ b/packages/client/ui-primitives/tests/mermaid.client.spec.tsx
+@@ -0,0 +1,99 @@
++// @vitest-environment jsdom
++import { cleanup, render, waitFor } from '@testing-library/react'
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import type { Mock } from 'vitest'
++import { MarkdownText } from './markdown-test-components.tsx'
++
++// jsdom has no SVG layout engine (getBBox), so mermaid cannot render there —
++// the engine is mocked at this tier; real diagram rendering is verified in
++// the browser lane. The mock keeps the component's contract honest:
++// initialize-on-theme-change, render-per-fence, and parse-failure rejection.
++vi.mock('mermaid', () => {
++  const initialize = vi.fn()
++  const render = vi.fn(async (_id: string, code: string) => {
++    if (code.includes('%%%')) throw new Error('Parse error')
++    return { svg: '<svg viewBox="0 0 10 10"><g class="root"><rect width="9" height="9"/><text>hi</text></g></svg>' }
++  })
++  return { default: { initialize, render } }
++})
++
++import mermaid from 'mermaid'
++const engine = mermaid as unknown as { initialize: Mock; render: Mock }
++
++const VALID = '```mermaid\nflowchart LR\n  A[Start] --> B[Done]\n```'
++
++afterEach(() => {
++  cleanup()
++  delete document.documentElement.dataset['dsThemeSource']
++  delete (window as { matchMedia?: unknown }).matchMedia
++  vi.restoreAllMocks()
++})
++
++beforeEach(() => {
++  engine.render.mockClear()
++})
++
++describe('mermaid fences', () => {
++  it('replaces a settled fence with a rendered diagram', async () => {
++    const { container } = render(<MarkdownText text={VALID} />)
++    // The code block is the pending view until the diagram materializes.
++    expect(container.querySelector('pre code')).not.toBeNull()
++    expect(container.querySelector('[data-mermaid-diagram]')).toBeNull()
++    await waitFor(() => { expect(container.querySelector('[data-mermaid-diagram] svg')).not.toBeNull() })
++    expect(container.querySelector('pre')).toBeNull()
++  })
++
++  it('keeps a streaming fence as literal code', () => {
++    const { container } = render(<MarkdownText streaming text={VALID} />)
++    expect(container.querySelector('[data-mermaid-diagram]')).toBeNull()
++    expect(container.querySelector('pre code')?.textContent).toContain('flowchart LR')
++    expect(engine.render).not.toHaveBeenCalled()
++  })
++
++  it('leaves the code block in place when the source does not parse', async () => {
++    const { container } = render(<MarkdownText text={'```mermaid\nnot a diagram %%%\n```'} />)
++    await waitFor(() => { expect(engine.render).toHaveBeenCalled() })
++    await new Promise(resolve => setTimeout(resolve, 50))
++    expect(container.querySelector('[data-mermaid-diagram]')).toBeNull()
++    expect(container.querySelector('pre code')?.textContent).toContain('not a diagram')
++  })
++
++  it('ignores a late diagram after the fence unmounted', async () => {
++    const { container, unmount } = render(<MarkdownText text={VALID} />)
++    unmount()
++    await new Promise(resolve => setTimeout(resolve, 50))
++    expect(container.querySelector('[data-mermaid-diagram]')).toBeNull()
++  })
++
++  it('resolves the theme from the document signals and re-initializes on change', async () => {
++    // No explicit source, jsdom matchMedia reports light: 'default'.
++    const first = render(<MarkdownText text={VALID} />)
++    await waitFor(() => { expect(first.container.querySelector('[data-mermaid-diagram] svg')).not.toBeNull() })
++    expect(engine.initialize.mock.calls.at(-1)?.[0]).toMatchObject({ securityLevel: 'strict', theme: 'default' })
++
++    // Explicit dark re-initializes; a second dark render does not.
++    document.documentElement.dataset['dsThemeSource'] = 'dark'
++    const second = render(<MarkdownText text={VALID} />)
++    await waitFor(() => { expect(second.container.querySelector('[data-mermaid-diagram] svg')).not.toBeNull() })
++    expect(engine.initialize.mock.calls.at(-1)?.[0]).toMatchObject({ theme: 'dark' })
++    const afterDark = engine.initialize.mock.calls.length
++    const third = render(<MarkdownText text={VALID} />)
++    await waitFor(() => { expect(third.container.querySelector('[data-mermaid-diagram] svg')).not.toBeNull() })
++    expect(engine.initialize.mock.calls).toHaveLength(afterDark)
++
++    // Explicit light, then system-dark via matchMedia.
++    document.documentElement.dataset['dsThemeSource'] = 'light'
++    const fourth = render(<MarkdownText text={VALID} />)
++    await waitFor(() => { expect(fourth.container.querySelector('[data-mermaid-diagram] svg')).not.toBeNull() })
++    expect(engine.initialize.mock.calls.at(-1)?.[0]).toMatchObject({ theme: 'default' })
++    delete document.documentElement.dataset['dsThemeSource']
++    // This jsdom has no matchMedia; define it to exercise the system branch.
++    window.matchMedia = ((query: string) => ({
++      matches: query.includes('dark'), media: query, addListener() {}, removeListener() {},
++      addEventListener() {}, removeEventListener() {}, onchange: null,
++    })) as unknown as typeof window.matchMedia
++    const fifth = render(<MarkdownText text={VALID} />)
++    await waitFor(() => { expect(fifth.container.querySelector('[data-mermaid-diagram] svg')).not.toBeNull() })
++    expect(engine.initialize.mock.calls.at(-1)?.[0]).toMatchObject({ theme: 'dark' })
++  })
++})
