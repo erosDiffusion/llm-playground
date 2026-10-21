@@ -1,8 +1,8 @@
 diff --git a/packages/bundle/web-app/cordis.patch.yml b/packages/bundle/web-app/cordis.patch.yml
-index a452579e9d..5e7dfd92a6 100644
+index a56cda5e3a..45a1d5ef3e 100644
 --- a/packages/bundle/web-app/cordis.patch.yml
 +++ b/packages/bundle/web-app/cordis.patch.yml
-@@ -399,6 +399,13 @@
+@@ -408,6 +408,13 @@
      - id: ui-message-feedback
        name: '@deepseek-ai/dsh-client-ui-message-feedback'
  
@@ -17,17 +17,17 @@ index a452579e9d..5e7dfd92a6 100644
      - id: ui-model-selection
        name: '@deepseek-ai/dsh-client-ui-model-selection'
 diff --git a/packages/bundle/web-app/package.json b/packages/bundle/web-app/package.json
-index d71c50f66d..c00941645c 100644
+index b466b32fc3..b5115044a4 100644
 --- a/packages/bundle/web-app/package.json
 +++ b/packages/bundle/web-app/package.json
-@@ -90,6 +90,7 @@
+@@ -95,6 +95,7 @@
      "@deepseek-ai/dsh-client-ui-permission-presets": "workspace:*",
      "@deepseek-ai/dsh-client-ui-plan": "workspace:*",
      "@deepseek-ai/dsh-client-ui-plugin-manager": "workspace:*",
 +    "@deepseek-ai/dsh-client-ui-quote": "workspace:*",
      "@deepseek-ai/dsh-client-ui-reference": "workspace:*",
      "@deepseek-ai/dsh-client-ui-renderer": "workspace:*",
-     "@deepseek-ai/dsh-client-ui-session": "workspace:*",
+     "@deepseek-ai/dsh-client-ui-secret-mask": "workspace:*",
 diff --git a/packages/client/ui-chat/src/client/chat/MessageIconActions.module.css b/packages/client/ui-chat/src/client/chat/MessageIconActions.module.css
 index 29c1c9e713..bedb74e09c 100644
 --- a/packages/client/ui-chat/src/client/chat/MessageIconActions.module.css
@@ -1969,18 +1969,18 @@ index 0000000000..3435fe8427
 +}
 diff --git a/packages/client/ui-quote/tsdown.config.ts b/packages/client/ui-quote/tsdown.config.ts
 new file mode 100644
-index 0000000000..02f6fe56fb
+index 0000000000..7aa03cebc1
 --- /dev/null
 +++ b/packages/client/ui-quote/tsdown.config.ts
 @@ -0,0 +1,3 @@
 +import { clientBundle } from '../tsdown.client.ts'
 +
-+export default clientBundle('@deepseek-ai/dsh-client-ui-quote', ['lib/types/index.js'])
++export default clientBundle(import.meta.dirname, ['lib/types/index.js'])
 diff --git a/tsconfig.client.json b/tsconfig.client.json
-index 53a7c72cc2..bacb9ac008 100644
+index b2f0423c7c..f09cc3c714 100644
 --- a/tsconfig.client.json
 +++ b/tsconfig.client.json
-@@ -121,6 +121,7 @@
+@@ -128,6 +128,7 @@
      { "path": "./packages/client/ui-agent-preset" },
      { "path": "./packages/client/ui-permission-presets" },
      { "path": "./packages/client/ui-plan" },
