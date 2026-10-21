@@ -593,7 +593,7 @@ index 0000000000..fd1e536064
 +} satisfies Record<QuoteKey, string>
 diff --git a/packages/client/ui-quote/src/client/paragraph.module.css b/packages/client/ui-quote/src/client/paragraph.module.css
 new file mode 100644
-index 0000000000..8f42474299
+index 0000000000..8b988e50ee
 --- /dev/null
 +++ b/packages/client/ui-quote/src/client/paragraph.module.css
 @@ -0,0 +1,29 @@
@@ -609,7 +609,7 @@ index 0000000000..8f42474299
 +  width: calc(28px + var(--dsh-content-font-delta, 0px));
 +  height: calc(28px + var(--dsh-content-font-delta, 0px));
 +  padding: 6px;
-+  border: 1px solid var(--dsw-alias-border-l);
++  border: 0.5px solid var(--dsw-alias-border-l);
 +  border-radius: 28px;
 +  background: var(--dsw-alias-bg-layer-2);
 +  color: var(--dsw-alias-label-secondary);
@@ -1976,6 +1976,28 @@ index 0000000000..7aa03cebc1
 +import { clientBundle } from '../tsdown.client.ts'
 +
 +export default clientBundle(import.meta.dirname, ['lib/types/index.js'])
+diff --git a/packages/client/ui-theme/tests/expected/radius-exceptions.expected.json b/packages/client/ui-theme/tests/expected/radius-exceptions.expected.json
+index 274fc5b552..0f7a490907 100644
+--- a/packages/client/ui-theme/tests/expected/radius-exceptions.expected.json
++++ b/packages/client/ui-theme/tests/expected/radius-exceptions.expected.json
+@@ -8,6 +8,17 @@
+   "ui-plan/src/client/PlanPreview.module.css": [
+     ".cardIcon: border-radius: 10px"
+   ],
++  "ui-quote/src/client/actions.module.css": [
++    ".action: border-radius: 28px"
++  ],
++  "ui-quote/src/client/dialog.module.css": [
++    ".dialog.dialog: border-radius: 18px",
++    ".preview: border-radius: 12px",
++    ".comment: border-radius: 12px"
++  ],
++  "ui-quote/src/client/paragraph.module.css": [
++    ".box: border-radius: 28px"
++  ],
+   "ui-schedule/src/client/ClockPicker.module.css": [
+     ".option: border-radius: 10px"
+   ],
 diff --git a/tsconfig.client.json b/tsconfig.client.json
 index b2f0423c7c..f09cc3c714 100644
 --- a/tsconfig.client.json

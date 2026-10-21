@@ -39,9 +39,9 @@ this kit becomes redundant. Verified via `pnpm dsh --profile web-lite --dump-con
 ## Re-merge 2026-10-21 (base moved alpha.2 -> dsh-v0.2.1-rc.2, 687f282e86)
 
 - `dsh-merge-queued-messages.patch` v3: one real conflict at rc.2 — upstream REMOVED the subagent early-return in `service.ts` submit (subagent sends now ride `beginSubmission` with a requestId; upstream test `echoes a subagent continuation` proves the new design is intended). Resolution: adopt the removal, keep only the merge-into-pending block. The v3 patch also FIXES a latent bug: the original patch never added `mergePending` to the `Config` volatile projection in `src/index.ts`, so `config.host.spec.ts` had been failing since the patch was authored (the applier only builds, never tests). Now symmetric with `busyEnter`.
-- `dsh-quote-selection.patch` v2: `ui-quote/tsdown.config.ts` updated to the new `clientBundle(import.meta.dirname, ...)` signature (upstream e137ebaaa1 changed the helper from id to package dir).
+- `dsh-quote-selection.patch` v3: `ui-quote/tsdown.config.ts` updated to the new `clientBundle(import.meta.dirname, ...)` signature (upstream e137ebaaa1 changed the helper from id to package dir); ALSO fixes two pre-existing ui-theme lint failures the patch had caused since 2026-10-03 (the applier only builds, never tests): ui-quote radii added to `ui-theme/tests/expected/radius-exceptions.expected.json`, and `paragraph.module.css` border 1px -> 0.5px hairline. The patch now touches one upstream test fixture — expect drift if upstream rewrites that fixture.
 - `dsh-mermaid-chat.patch` v2: regenerated so it no longer depends on the video patch's context (alphabetical apply order works).
-- Verified on rc.2: builds host+client+web green; `vitest packages/client/ui-conversation` 801/801; ui-conversation+ui-quote+ui-primitives 2220/2220.
+- Verified on rc.2 (2026-10-21): builds host+client+web green; `pnpm exec vitest run packages/client` = 632 files, 10634 passed, 1 skipped, 0 failed. NOTE: run tests via `pnpm exec vitest`, not `npx vitest` — the documentpreview license-pack spec reads `process.env.npm_execpath` and fails under npx.
 - Rollback on the box: `~/.dsh/bin/rollback-dsh-to-alpha2.sh` (git stash `pre-rc2-2026-10-21` holds the exact old live state; v1 patches archived in `~/.dsh/patches/archive/`).
 
 ## Provenance
