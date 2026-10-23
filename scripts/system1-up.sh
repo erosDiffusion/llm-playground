@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Bring up the local System-1 stack (qwen3-8b embeddings :8091, qwen3-embed :8092).
 # Inventory + facts: llm-playground/scripts/local-system1-stack.md. Idempotent.
+# NOTE: setsid is REQUIRED — harness background jobs get SIGTERM at ~3.5h (decision log 2026-10-23).
+# Shared resource: check no other session is mid-CLM-work before system1-down.sh.
 set -u
 LLAMA=/home/oem/.unsloth/llama.cpp/build/bin/llama-server
 up(){ local port=$1; shift
   if ss -ltn | grep -q "127.0.0.1:$port "; then echo ":$port already up"; return 0; fi
-  nohup "$LLAMA" "$@" --host 127.0.0.1 --no-webui >"/tmp/system1-$port.log" 2>&1 &
+  setsid nohup "$LLAMA" "$@" --host 127.0.0.1 --no-webui >"/tmp/system1-$port.log" 2>&1 < /dev/null &
   echo "starting :$port -> log /tmp/system1-$port.log"; }
 up 8091 -m /home/oem/Apps/deepseek-workspace/trade-harvest/data/gguf/Qwen3-8B-Q4_K_M.gguf \
    --embeddings --pooling last --port 8091 --alias qwen3-8b --ctx-size 2048 -ngl 99 -b 512 -ub 512
