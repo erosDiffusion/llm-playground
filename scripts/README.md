@@ -27,3 +27,7 @@ Archived operational scripts. Copies are byte-identical to the source; provenanc
 - `update_repos.sh` is the most knowledge-dense file here: its `SKIP_REPOS` and `DROP_BEFORE_PULL` lists are the result of real breakage — do not "clean up" duplicates or remove entries without checking why they were added.
 - The remote box (192.168.1.34) runs its own ComfyUI install; if its startup command differs from `start_comfyui_manager.sh`, archive that one too (ask the user to paste it — no file access to the remote yet).
 - For local desktop autostart, keep startup and maintenance separate: use user `systemd` for launch, run updates outside boot (or via a separate timer) unless explicitly needed.
+
+## System-1 / decision-model stack (2026-10-23, this machine)
+- `local-system1-stack.md` — inventory + runbook: qwen3-8b embeddings :8091 (trade-harvest/data/gguf), qwen3-embed :8092 (~/models), CLM_v0.1-8B.pt heads (workspace projects/clm), ollama idle qwen3.5-abliterated:4b. Proven: CLM semantic gate AUC 0.973 (th 0.891), market gate dead (0.52).
+- `system1-up.sh` / `system1-down.sh` — bring the two llama-server embedding processes up/down idempotently (only :8091/:8092; never Strata/ComfyUI). Source: authored on this box 2026-10-23 from the live `ps` cmdlines.
