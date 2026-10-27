@@ -13,7 +13,15 @@ are **untracked there**, so they survive checkouts but exist nowhere else. This 
 | `warm-build.py` | byte-identical copy of `warm-build-2026-10-13.py` — warms `build/` + `build-vision/` with setup.py's EXACT `build_engine` defs WITHOUT touching `engine/` (locked by the running server), so the swap stop→copy is seconds. Imports setup.py as a module (`main` is `__main__`-guarded), reads `engine/BUILD.json` for archs. Verified working unchanged on v0.2.2 | `~/Apps/Strata/warm-build-2026-10-13.py` (untracked) | 2026-10-23 |
 | `swap-strata.sh` | **generalized** engine swap (was the dated `swap-2026-10-21.sh`): SIGINT `serve/server.py` → wait for :8080 free → `sh setup.sh --update` (no-op build + engine copy + stamp; old binaries → `engine/.previous`) → `START_SCRIPT` detached → poll `/health` → log. RUN DETACHED; drops the brain ~90 s–3 min, needs user OK. Env: `START_SCRIPT`, `PORT`, `STRATA_HOME`. Live copy: `~/.dsh/bin/swap-strata.sh` | generalized 2026-10-23 from the applied 2026-10-21 swap (log: brain down 26 s, /health green, 182 tok/s) | 2026-10-23 |
 | `strata-upgrade-check.sh` | read-only preflight: lists remote tags + fetches only the target tag ref (`git fetch --tags` breaks after the 2026-10 history rewrite — "would clobber existing tag"), extracts the LIVE engine's launch flags from `/proc/<pid>/cmdline` (fallback: config `args`), greps each in the new tag's source, verifies `serve/server.py` + `setup.py` + `setup.sh` + config keys. No risk to the running brain; self-tested 2026-10-23 (16 live flags vs v0.2.2 and v0.1.39: 0 missing). Live copy: `~/.dsh/bin/strata-upgrade-check.sh` | authored 2026-10-23 (automates the manual 14-flag check of 2026-10-21) | 2026-10-23 |
-| `UPDATE-2026-10-13.md`, `UPDATE-2026-10-21.md` | dated handoff sheets from the two applied upgrades (state, compatibility checks, apply/rollback, gotchas) — kept verbatim as the archaeology trail | `~/Apps/Strata/UPDATE-*.md` (untracked) | 2026-10-23 |
+| `UPDATE-2026-10-13.md`, `UPDATE-2026-10-21.md`, `UPDATE-2026-10-27.md` | dated handoff sheets from the three applied upgrades (state, compatibility checks, apply/rollback, gotchas) — kept verbatim as the archaeology trail | `~/Apps/Strata/UPDATE-*.md` (untracked) | 2026-10-27 |
+
+**Applied 2026-10-27 (first full run through this protocol):** v0.2.2 → **v0.2.7**, engine 0.1.47 → **0.1.52**.
+Preflight 18 flags 0 missing; `warm-build.py` worked UNCHANGED on 0.2.7 too (275 targets, 3m27s, brain never
+stopped); detached swap: `swap OK` logged, `/health` green, flex + vision + tool-calling all verified after
+restarting the chat. Note: a parallel session's 2026-10-23 config change (`--slots 2 --batch-mtp`) is now in the
+live launch line — it shrinks the full expert cache 10,816→9,657 slots, and decode measured 147 tok/s under it
+vs 182 pre-`--slots` on 0.1.47 (not directly comparable — re-measure with the flags off before blaming the
+engine). Rollback still armed: `engine/.previous` holds 0.1.47.
 
 Not archived (deliberately): the tarball `~/backups/strata-update-2026-10-21/` holds a pre-upgrade snapshot of ALL
 untracked Strata files (incl. `-conv`/`-393k`/`-network` launchers and the never-installed `/v1/embeddings`

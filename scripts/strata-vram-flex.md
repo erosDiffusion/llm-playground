@@ -28,15 +28,18 @@ curl -sX POST 127.0.0.1:8080/v1/vram -H 'Content-Type: application/json' -d '{"r
   in-flight request; `ModelBusy` = a request is still running → retry at the next tool boundary.
   The engine itself never resizes mid-request. An unloaded engine applies it at load.
 - Response (the state probe — always verify after flexing):
-  `{"status":"ok","reserve_mib":N,"expert_slots":…,"expert_slots_full":10816,`
-  `"expert_cache_mib":…,"expert_cache_full_mib":21019,"vram_free_mib":…,"prompt_chunk":8192}`
+  `{"status":"ok","reserve_mib":N,"expert_slots":…,"expert_slots_full":…,\`
+  `"expert_cache_mib":…,"expert_cache_full_mib":…,"vram_free_mib":…,"prompt_chunk":8192}`
 
-## Numbers (measured 2026-10-21, re-probe before trusting)
+## Numbers (re-probe before trusting — the slot budget depends on the launch config!)
 
-- Slot ≈ 1.94 MiB. Full cache = 10,816 slots ≈ 21.0 GB. Full state: engine ≈ 30.5 GB, ~1.5 GB free.
-- `reserve_mib: 22016` → **~512 experts resident** (cache ≈1 GB) → engine ≈ 9–12 GB,
-  ~20 GB free → window fits MiniMax-H3 (~22–27 GB headroom incl. Comfy's share), klein (~10–15 GB),
-  DLSS5-NR-Wine host (~1–2 GB; small tests even fit unflexed).
+- **2026-10-27 re-probe (engine 0.1.52 / v0.2.7, config now also passes `--slots 2 --batch-mtp`, added 2026-10-23):**
+  full cache = **9,657 slots ≈ 18,758 MiB** (slot still ≈1.94 MiB); reclaim (`null`) → reserve 2048,
+  9,489 slots resident, `vram_free_mib` ≈1919; engine ≈30.2 GB. The batch slots + batch-MTP eat ≈2.3 GB
+  of what was expert cache under the 10-21 config — so flex-window headroom moved by roughly that much:
+  re-run the `reserve_mib: 22016` probe and read `expert_slots` before sizing an H3/klein window.
+- 2026-10-21 (engine 0.1.47, pre-`--slots` config): full = 10,816 slots ≈ 21.0 GB; `reserve_mib: 22016` →
+  ~512 experts resident (cache ≈1 GB) → engine ≈9–12 GB, ~20 GB free (window fit MiniMax-H3, klein, DLSS5-NR-Wine).
 - Busy-target while a Comfy flow runs: `reserve_mib: 14336`-style flex → engine ≈18 GB, ≥2 GB headroom
   (user-tuned 2026-10-19; do NOT full-reclaim mid-flow).
 
