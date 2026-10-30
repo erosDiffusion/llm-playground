@@ -95,7 +95,10 @@ Current rows: strata (ready) · qwen3-1.7b / qwen3-4b (ready) · madlad400-3b
 simultaneous S2ST, no German/Italian; its GGUF needs llama.cpp support that is
 not merged upstream yet, and 30B-A3B won't fit the 15 GB of free disk) ·
 gemini-livetranslate (api: cloud only, needs a Google key — no weights) ·
-qwen3.8-livetranslate (watch: no public weights).
+qwen3.8-livetranslate (watch: no public weights) ·
+**voxtral-mini-4b-realtime** (candidate: the best audio-mode ASR we found —
+natively streaming, 240 ms–2.4 s configurable delay, de+it supported,
+Apache-2.0, 4B so it fits a flex window, unlike Nemotron).
 
 About the Hy-SimulMT benchmark table (Qwen3.8 / Hy / Gemini3.5 LiveTranslate,
 FLEURS 88.4–92.4 etc.): those are **live speech interpreters**, and the whole

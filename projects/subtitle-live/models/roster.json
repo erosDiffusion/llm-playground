@@ -76,6 +76,13 @@
       "note": "simultaneous speech-to-speech zh<->en ONLY - no German/Italian path, not usable here. GGUF exists but llama.cpp support not merged upstream (repo says wait). Re-check if language coverage grows."
     },
     {
+      "id": "voxtral-mini-4b-realtime",
+      "label": "Voxtral Mini 4B Realtime 2602 (Mistral)",
+      "kind": "speech",
+      "status": "candidate",
+      "note": "AUDIO mode ASR upgrade: natively streaming causal audio encoder, configurable 240 ms-2.4 s delay, 13 languages incl. de/it, Apache-2.0, ungated, runs >12.5 tok/s on modest hardware (4B). Same family LM Studio uses for Voice Input. Not downloaded."
+    },
+    {
       "id": "gemini-livetranslate",      "label": "Gemini 3.5 LiveTranslate (Google)",
       "kind": "speech",
       "status": "api",
