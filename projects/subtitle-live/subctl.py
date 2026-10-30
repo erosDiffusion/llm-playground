@@ -166,7 +166,7 @@ class H(BaseHTTPRequestHandler):
             self._send({"running": pid is not None, "pid": pid,
                         "mt": mt_running() is not None,
                         "roster": [m for m in read_roster()
-                                   if m.get("kind") in ("text-mt", "speech")],
+                                   if m.get("kind") in ("text-mt", "speech", "voice")],
                         "tuning": read_tuning(), "log": tail})
         else:
             self._send({"error": "unknown"}, 404)

@@ -11,6 +11,7 @@ Usage:  sublive.py [--lang en|it] [--show-de] [--url-frag primevideo.com] [--dem
 from __future__ import annotations
 
 import argparse
+import atexit
 import json
 import os
 import queue
@@ -478,7 +479,19 @@ class Dub:
         self.kokoro = None
         here = os.path.dirname(os.path.abspath(__file__))
         want = str(tune("tts", getattr(args, "tts", "auto")))
-        if want in ("auto", "kokoro"):
+        if want == "qwentts":
+            # Resident llama-server (upstream master build) exposing POST /tts:
+            # ~0.5-0.9 s per line, voice cloned from a reference wav. Needs a
+            # ~6 GB VRAM window -> we flex the expert cache for it and reclaim
+            # on exit. If the server cannot load, fall back to Kokoro.
+            ok = self._start_qwentts(here)
+            if ok:
+                self.engine = "qwentts"
+            else:
+                log("qwentts unavailable (VRAM?) — using kokoro")
+                want = "kokoro"
+        if want in ("auto", "kokoro", "qwentts"):
+            # also loaded as the fallback voice when qwentts is selected
             try:
                 import onnxruntime as rt
                 from kokoro_onnx import Kokoro
@@ -490,9 +503,10 @@ class Dub:
                 sess._model_path = model
                 self.kokoro = Kokoro.from_session(
                     sess, os.path.join(here, "models", "kokoro", "voices-v1.0.bin"))
-                self.engine = "kokoro"
-                log(f"dub voice: kokoro "
-                    f"{self.KOKORO[args.lang][1].get(tune('voice', 'female'), 'af_bella')}")
+                if self.engine == "piper":
+                    self.engine = "kokoro"
+                    log(f"dub voice: kokoro "
+                        f"{self.KOKORO[args.lang][1].get(tune('voice', 'female'), 'af_bella')}")
             except Exception as e:
                 log(f"kokoro unavailable ({e}) — falling back to piper")
         if self.engine == "piper":
@@ -535,6 +549,13 @@ class Dub:
     def _play(self, text: str):
         try:
             rate = float(tune("tts_rate", self.args.tts_rate))
+            if self.engine == "qwentts":
+                if not self._play_qwentts(text) and self.kokoro is not None:
+                    log("qwentts failed — this line on kokoro")
+                    self.engine = "kokoro"
+                    self._play_kokoro(text, rate)
+                    self.engine = "qwentts"
+                return
             if self.engine == "kokoro":
                 self._play_kokoro(text, rate)
                 return
@@ -597,6 +618,101 @@ class Dub:
                     self.proc = None
 
         asyncio.run(run())
+
+    QWENTTS_PORT = 8099
+
+    def _qwentts_ref(self, here: str):
+        import base64
+        import os
+        lang = self.args.lang
+        gender = str(tune("voice", "female"))
+        d = os.path.join(here, "models", "tts")
+        p = next((p for p in (os.path.join(d, f"ref_{lang}_{gender}.wav"),
+                              os.path.join(d, f"ref_{lang}.wav"))
+                  if os.path.exists(p)), None)
+        return base64.b64encode(open(p, "rb").read()).decode() if p else None
+
+    def _start_qwentts(self, here: str) -> bool:
+        import os
+        import time
+        import urllib.request
+        srv = os.path.join(here, "..", "llama-master-build", "bin", "llama-server")
+        model = os.path.join(here, "models", "tts", "qwen3-tts-1.7b-base-q8.gguf")
+        mm = os.path.join(here, "models", "tts", "mmproj-qwen3-tts-base-q8.gguf")
+        if not (os.path.exists(srv) and os.path.exists(model)):
+            log(f"qwentts: missing build/model ({srv})")
+            return False
+        # make room on the GPU for the TTS model (elastic expert cache)
+        try:
+            req = urllib.request.Request(
+                "http://127.0.0.1:8080/v1/vram",
+                data=json.dumps({"reserve_mib": 6144}).encode(),
+                headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=120)
+        except Exception as e:
+            log(f"qwentts: flex request failed ({e})")
+        lf = open(os.path.join(here, "tts-server.log"), "wb")
+        self.tts_proc = subprocess.Popen(
+            [srv, "-m", model, "--mmproj", mm, "--host", "127.0.0.1",
+             "--port", str(self.QWENTTS_PORT), "-ngl", "99", "-c", "2048"],
+            stdout=lf, stderr=lf, start_new_session=True)
+        self.tts_url = f"http://127.0.0.1:{self.QWENTTS_PORT}"
+        for _ in range(30):
+            try:
+                if urllib.request.urlopen(self.tts_url + "/health",
+                                          timeout=2).status == 200:
+                    log("dub voice: qwentts (Qwen3-TTS-12Hz-1.7B, resident)")
+                    atexit.register(self._stop_qwentts)
+                    return True
+            except Exception:
+                time.sleep(2)
+        self._stop_qwentts()
+        return False
+
+    def _stop_qwentts(self):
+        p = getattr(self, "tts_proc", None)
+        if p and p.poll() is None:
+            try:
+                os.killpg(os.getpgid(p.pid), signal.SIGTERM)
+            except Exception:
+                pass
+        try:  # give the expert cache back
+            req = urllib.request.Request(
+                "http://127.0.0.1:8080/v1/vram",
+                data=json.dumps({"reserve_mib": None}).encode(),
+                headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=120)
+        except Exception:
+            pass
+
+    def _play_qwentts(self, text: str) -> bool:
+        """POST /tts on the resident server (non-streaming: the streaming path
+        in llama.cpp master is ~7x slower). Returns False -> caller falls back."""
+        import tempfile
+        ref = self._qwentts_ref(os.path.dirname(os.path.abspath(__file__)))
+        body = {"input": text, "lang": self.args.lang, "seed": 7}
+        if ref:
+            body["speaker_ref_b64"] = ref
+        try:
+            req = urllib.request.Request(
+                self.tts_url + "/tts", data=json.dumps(body).encode(),
+                headers={"Content-Type": "application/json"})
+            wav = urllib.request.urlopen(req, timeout=60).read()
+            if len(wav) < 1000:
+                return False
+            fd, out = tempfile.mkstemp(suffix=".wav", dir="/tmp")
+            os.close(fd)
+            with open(out, "wb") as f:
+                f.write(wav)
+            ap = subprocess.Popen(["aplay", "-q", out], stderr=subprocess.DEVNULL)
+            self.proc = ap
+            ap.wait()
+            self.proc = None
+            os.unlink(out)
+            return True
+        except Exception as e:
+            log(f"qwentts failed: {e}")
+            return False
 
 
 def norm(s: str) -> str:

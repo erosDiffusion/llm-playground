@@ -41,7 +41,7 @@ function buildMt(roster) {
   };
   add("strata", "Strata (best quality)");
   for (const m of roster) {
-    if (m.id === "strata") continue;   // already added above
+    if (m.id === "strata" || m.kind === "voice") continue;  // strata added above; voices are not translators
     if (m.kind === "text-mt")
       add(m.id, m.label + (m.status === "ready" ? "" : " [" + m.status + "]"),
           m.status !== "ready");

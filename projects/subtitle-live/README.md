@@ -2,9 +2,10 @@
 
 Provenance: live project at `/home/oem/Apps/deepseek-workspace/subtitle-live`
 (machine `oem-am5`, 2026-10-30). Source-only copy — the live dir also holds
-`.venv/`, `models/` (kokoro fp16 ONNX + voices, Qwen3 GGUFs, Nemotron NVFP4
-~21 GB, piper voices), logs and pidfiles, none of which belong here. Models
-are re-downloadable per the README.
+`.venv/`, `models/` (kokoro, Qwen3-TTS + refs, Voxtral GGUFs, Nemotron, Qwen3
+MT GGUFs, piper voices), `../llama-master-build` (llama.cpp master with /tts)
+and logs/pidfiles — none of which belong here. Models and both llama.cpp builds
+are re-creatable per the README.
 
 # subtitle-live — realtime translated subtitles over a browser tab
 
@@ -157,10 +158,43 @@ RTF ~0.15): `af_bella` (en) / `if_sara` (it) — far more expressive than piper
 and 2x faster. Set `"tts": "piper"` in tuning.json to fall back to the old
 piper voices. `tts_rate` <1 speaks faster on either engine.
 
-**Qwen3-TTS-12Hz-1.7B** (instruction-controlled emotion, 4.5 GB, Jan 2026) is
-the planned premium upgrade — needs a Strata flex window (~6 GB), not installed
-yet. Chrome's built-in Translator/TTS checked 2026-10-30: TTS has 0 voices on
-this box (dead end); its Translator is worse than the Strata path.
+### Premium voice: Qwen3-TTS 12Hz 1.7B (GGUF, llama.cpp)
+
+Pick **Qwen3-TTS** in the extension (or `"tts": "qwentts"` in tuning.json — restart
+key). `sublive` then starts a **resident** `llama-server` from the upstream master
+build (`../llama-master-build/bin/llama-server`, models `models/tts/qwen3-tts-1.7b-base-q8.gguf`
++ its mmproj) on **:8099** and calls `POST /tts` per line:
+
+    measured: 0.46-0.89 s per line INCLUDING voice cloning, RTF ~0.18
+    the /tts "stream": true path is ~7x slower -> we use the non-streaming call
+
+Voice = **clone from a reference wav**, chosen by target language + the Dub voice
+dropdown: `models/tts/ref_<lang>_<gender>.wav` (generated from Kokoro with stdlib
+`wave`; replace with any real 10-25 s sample you like — that's the interesting
+knob, e.g. a real Italian actor clip). GPU cost ≈ 3 GB, so sublive flexes the
+Strata expert cache to `reserve_mib 6144` on start and reclaims it on exit;
+`stop.sh` / `panel_stop.sh` do both too. If the server cannot load (VRAM), the
+line falls back to Kokoro automatically.
+
+Build note: llama.cpp **master** is required for `/tts` + the Qwen3-TTS arch —
+`~/Apps/deepseek-workspace/llama-master-build` (built from the master tarball with
+`-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=120`, CUDA 13.2 via
+`CUDACXX=/usr/local/cuda-13.2/bin/nvcc`). The Unsloth build in `~/.unsloth` is too
+old for both `/tts` and Voxtral's audio projector (kept for MT/ASR servers).
+
+### Audio-mode ASR: Voxtral Mini 4B Realtime (measured)
+
+    ./voxtral_transcribe.sh clip.wav
+
+Streams 12 s of German in 7.6 s (**1.57× realtime on CPU only**, `-ngl 0` +
+`CUDA_VISIBLE_DEVICES=''` so it never competes with the dub's GPU window) and the
+transcript was accurate. Caveat found: `llama-mtmd-cli` keeps the model's own
+transcript format — a *"translate to English"* prompt was **not** honoured, and the
+GGUF has no chat template so llama-server returns 501 for chat/completions. So
+today it is an ASR, not a translator; wiring it into `--mode audio` as the ASR in
+front of Strata is the next step. Chrome's built-in Translator/TTS (checked
+2026-10-30): TTS has 0 voices on this box (dead end); its Translator is worse than
+the Strata path.
 start.sh starts the ASR server **only** in audio mode now (cue never transcribes).
 
 **Chrome extension** (`ext/`): load unpacked via chrome://extensions → Developer

@@ -79,8 +79,25 @@
       "id": "voxtral-mini-4b-realtime",
       "label": "Voxtral Mini 4B Realtime 2602 (Mistral)",
       "kind": "speech",
-      "status": "candidate",
-      "note": "AUDIO mode ASR upgrade: natively streaming causal audio encoder, configurable 240 ms-2.4 s delay, 13 languages incl. de/it, Apache-2.0, ungated, runs >12.5 tok/s on modest hardware (4B). Same family LM Studio uses for Voice Input. Not downloaded."
+      "status": "ready",
+      "path": "models/voxtral",
+      "note": "AUDIO mode ASR, PROVEN 2026-10-30: streamed 12 s German in 7.6 s (1.57x RT) on CPU only (-ngl 0 + CUDA_VISIBLE_DEVICES='') -> zero VRAM, never fights the dub. Needs the upstream master build (llama-master-build): our Unsloth tree cannot load its audio projector. Use ./voxtral_transcribe.sh clip.wav. Caveat: llama-mtmd-cli keeps the model's own transcript format - a 'translate to English' prompt was NOT honored."
+    },
+    {
+      "id": "qwen3-tts-12hz-1.7b",
+      "label": "Qwen3-TTS 12Hz 1.7B (dub voice)",
+      "kind": "voice",
+      "status": "ready",
+      "path": "models/tts/qwen3-tts-1.7b-base-q8.gguf",
+      "note": "RESIDENT llama-server (:8099, upstream master build) POST /tts; voice cloned from models/tts/ref_<lang>_<gender>.wav; 0.46-0.89 s per line, RTF ~0.18; needs ~6 GB flex window (sublive flexes it, reclaims on exit). Selected by tuning tts=qwentts."
+    },
+    {
+      "id": "kokoro-82m",
+      "label": "Kokoro-82M (dub voice, default)",
+      "kind": "voice",
+      "status": "ready",
+      "path": "models/kokoro",
+      "note": "CPU, streamed, RTF 0.14, first audio ~0.3 s; af_bella/am_michael (en), if_sara/im_nicola (it)."
     },
     {
       "id": "gemini-livetranslate",      "label": "Gemini 3.5 LiveTranslate (Google)",
