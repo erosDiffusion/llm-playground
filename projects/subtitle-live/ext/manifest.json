@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Realtime Dub Control",
+  "version": "1.0",
+  "description": "Live control for the subtitle-live dub/translation pipeline (local subctl server).",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Realtime Dub Control"
+  },
+  "host_permissions": ["http://127.0.0.1:8321/*"],
+  "icons": {}
+}

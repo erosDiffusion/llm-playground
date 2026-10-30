@@ -1,0 +1,18 @@
+{
+ "lang": "it",
+ "cue_poll": 0.15,
+ "cue_stable": 2,
+ "tts_rate": 1.0,
+ "tts": "kokoro",
+ "voice": "male",
+ "duck": 1.0,
+ "speak": false,
+ "show_de": true,
+ "feed_subs": false,
+ "bottom_frac": 0.32,
+ "width_frac": 0.6,
+ "tr_pt": 15,
+ "de_pt": 24,
+ "mt": "local",
+ "mt_model": "qwen3-4b"
+}

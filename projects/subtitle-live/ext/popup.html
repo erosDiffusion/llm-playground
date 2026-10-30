@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { width: 320px; font: 13px/1.4 system-ui, sans-serif; margin: 0;
+         background: #1e1f24; color: #e8e8ea; padding: 12px; }
+  h1 { font-size: 14px; margin: 0 0 8px; }
+  .row { display: flex; align-items: center; justify-content: space-between;
+         margin: 7px 0; gap: 8px; }
+  .row label { flex: 1; }
+  .val { width: 44px; text-align: right; color: #9fd0ff; font-variant-numeric: tabular-nums; }
+  input[type=range] { flex: 2; }
+  select, button { background: #2c2e35; color: #e8e8ea; border: 1px solid #3a3d45;
+                   border-radius: 6px; padding: 5px 9px; cursor: pointer; }
+  button:hover { background: #383b45; }
+  .btns { display: flex; gap: 8px; margin: 10px 0; }
+  .btns button { flex: 1; }
+  .stop { border-color: #7a3b3b; } .start { border-color: #3f7a4a; }
+  .status { font-weight: 600; } .on { color: #7fd98a; } .off { color: #d98a7f; }
+  #hint { color: #e2c07a; min-height: 16px; font-size: 12px; margin: 4px 0; }
+  #log { background: #14151a; color: #b8c0cc; border-radius: 6px; padding: 6px 8px;
+         font: 11px/1.35 ui-monospace, monospace; white-space: pre-wrap;
+         max-height: 150px; overflow: auto; margin-top: 8px; }
+  .switch { position: relative; display: inline-block; width: 38px; height: 20px;
+            cursor: pointer; flex: none; }
+  .switch input { display: none; }
+  .track { position: absolute; inset: 0; background: #3a3d45; border-radius: 10px;
+           transition: .15s; }
+  .track::before { content: ""; position: absolute; width: 16px; height: 16px; left: 2px;
+                   top: 2px; background: #cfd3da; border-radius: 50%; transition: .15s; }
+  input:checked + .track { background: #3f7a4a; }
+  input:checked + .track::before { transform: translateX(18px); background: #fff; }
+</style>
+</head>
+<body>
+  <h1>Realtime Dub Control</h1>
+  <div class="row"><span class="status" id="status">…</span>
+    <span id="pid" style="color:#8a90a0"></span></div>
+  <div class="btns">
+    <button class="start" id="start">Start</button>
+    <button class="stop"  id="stop">Stop</button>
+    <button id="restart">Restart</button>
+  </div>
+  <div id="hint"></div>
+
+  <div class="row">
+    <label for="lang">Target language</label>
+    <select id="lang">
+      <option value="en">English</option>
+      <option value="it">Italian</option>
+    </select>
+  </div>
+  <div class="row">
+    <label for="src_lang">Source (Prime subs)</label>
+    <select id="src_lang">
+      <option value="German">German</option>
+      <option value="Italian">Italian</option>
+      <option value="English">English</option>
+      <option value="Spanish">Spanish</option>
+      <option value="French">French</option>
+      <option value="Portuguese">Portuguese</option>
+    </select>
+  </div>
+  <div class="row">
+    <label for="mt">Translator</label>
+    <select id="mt">
+      <option value="strata">Strata (best)</option>
+      <option value="qwen3-1.7b">Qwen3-1.7B (fast)</option>
+      <option value="qwen3-4b">Qwen3-4B (better)</option>
+    </select>
+  </div>
+  <div class="row">
+    <label for="voice">Dub voice</label>
+    <select id="voice">
+      <option value="female">Female</option>
+      <option value="male">Male</option>
+    </select>
+  </div>
+  <div class="row">
+    <label for="tts">Dub engine <small>(restart)</small></label>
+    <select id="tts">
+      <option value="kokoro">Kokoro (expressive)</option>
+      <option value="piper">Piper (old)</option>
+      <option value="auto">Auto</option>
+    </select>
+  </div>
+
+  <div class="row">
+    <label for="cue_poll">Detect speed (poll s)</label>
+    <input type="range" id="cue_poll" min="0.05" max="0.5" step="0.05">
+    <span class="val" id="v_cue_poll"></span>
+  </div>
+  <div class="row">
+    <label for="cue_stable">Stability (reads)</label>
+    <input type="range" id="cue_stable" min="1" max="4" step="1">
+    <span class="val" id="v_cue_stable"></span>
+  </div>
+  <div class="row">
+    <label for="tts_rate">Dub speed (rate)</label>
+    <input type="range" id="tts_rate" min="0.7" max="1.3" step="0.05">
+    <span class="val" id="v_tts_rate"></span>
+  </div>
+  <div class="row">
+    <label for="duck">Player volume (1=untouched)</label>
+    <input type="range" id="duck" min="0" max="1" step="0.1">
+    <span class="val" id="v_duck"></span>
+  </div>
+
+  <div class="row">
+    <label for="bottom_frac">Vertical position (height)</label>
+    <input type="range" id="bottom_frac" min="0.04" max="0.6" step="0.02">
+    <span class="val" id="v_bottom_frac"></span>
+  </div>
+  <div class="row">
+    <label for="tr_pt">Translation size (pt)</label>
+    <input type="range" id="tr_pt" min="12" max="48" step="1">
+    <span class="val" id="v_tr_pt"></span>
+  </div>
+  <div class="row">
+    <label for="de_pt">Original size (pt, 0=off)</label>
+    <input type="range" id="de_pt" min="0" max="28" step="1">
+    <span class="val" id="v_de_pt"></span>
+  </div>
+
+  <div class="row"><label>Dub (speak)</label>
+    <label class="switch"><input type="checkbox" id="speak"><span class="track"></span></label></div>
+  <div class="row"><label>Show original line</label>
+    <label class="switch"><input type="checkbox" id="show_de"><span class="track"></span></label></div>
+  <div class="row"><label>Inject into player DOM <small>(may blackout)</small></label>
+    <label class="switch"><input type="checkbox" id="feed_subs"><span class="track"></span></label></div>
+
+  <pre id="log">loading…</pre>
+
+<script src="popup.js"></script>
+</body>
+</html>
