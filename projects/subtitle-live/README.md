@@ -1,10 +1,11 @@
 # subtitle-live (vault copy)
 
 Provenance: live project at `/home/oem/Apps/deepseek-workspace/subtitle-live`
-(machine `oem-am5`, 2026-10-30). Source-only copy — the live dir additionally
-holds `.venv/`, `models/` (kokoro fp16 ONNX + voices, Qwen3 GGUFs, Nemotron
-NVFP4 ~21 GB, piper voices), logs and pidfiles, none of which belong here.
-Models are all downloadable from HuggingFace/GitHub (see README sections).
+(machine `oem-am5`, 2026-10-30, updated same day: model roster + nemotron
+serve/try scripts). Source-only copy — the live dir additionally holds
+`.venv/`, `models/` (kokoro fp16 ONNX + voices, Qwen3 GGUFs, Nemotron NVFP4
+~21 GB, piper voices), logs and pidfiles, none of which belong here. Models
+are re-downloadable per the README.
 
 # subtitle-live — realtime translated subtitles over a browser tab
 
@@ -80,6 +81,36 @@ Restart keys: **lang** (voice/prompt language) and **tts** (dub engine).
 
 subctl endpoints: `POST /mt {"model":"qwen3-1.7b"|"qwen3-4b"|"off"}` handles
 flex + serve + tuning keys (`mt`, `mt_model`); sublive reads them live.
+
+## Central model roster
+
+`models/roster.json` is the single source of truth for every model the pipeline
+knows (translation + speech). `subctl /status` serves it; the extension builds
+its Translator dropdown from it live. Add a GGUF under `models/mt/` + a roster
+row → it appears in the UI (selectable only when `kind: text-mt,
+status: ready`; anything else shows disabled with its status).
+
+Current rows: strata (ready) · qwen3-1.7b / qwen3-4b (ready) · madlad400-3b
+(broken: 2024 GGUF won't load in current llama.cpp) · nemotron-transcribe
+(staged, audio-mode) · hy-simulmt-30b (watch: **zh↔en only** — Tencent's
+simultaneous S2ST, no German/Italian; its GGUF needs llama.cpp support that is
+not merged upstream yet).
+
+## Nemotron 3.5 Transcribe (staged, models/nemotron)
+
+SpeechLM: ASR + direct speech→text translation (de→en BLEU ≈40) — **audio
+mode only** (titles with no subtitles). In cue mode there is no audio to
+transcribe, so it never helps there. Needs vLLM 0.32 + the `nemo_speechlm`
+NeMo plugin and ~27 GB VRAM → **stop Strata first; this agent session goes
+offline while it runs.**
+
+    ./nemotron_serve.sh --install    # one-time venv (~8 GB)
+    # stop Strata, then:
+    ./nemotron_serve.sh              # OpenAI-compatible on :8097
+    .venv/bin/python nemotron_try.py clip.wav --to English
+
+`nemotron_try.py` posts a base64 wav + the official prompt "Please translate
+the given speech to English." — one call replaces ASR+translator.
 
 ## Dub voices
 

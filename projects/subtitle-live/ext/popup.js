@@ -28,10 +28,33 @@ function fill(t) {
   else if (t.mt === "strata") $("mt").value = "strata";
 }
 
+function buildMt(roster) {
+  const sel = $("mt");
+  if (!roster || !roster.length) return;
+  const sig = roster.map(m => m.id).join(",");
+  if (sel.dataset.built === sig) return;
+  sel.innerHTML = "";
+  const add = (v, label, dis) => {
+    const o = document.createElement("option");
+    o.value = v; o.textContent = label; o.disabled = !!dis;
+    sel.appendChild(o);
+  };
+  add("strata", "Strata (best quality)");
+  for (const m of roster) {
+    if (m.id === "strata") continue;   // already added above
+    if (m.kind === "text-mt")
+      add(m.id, m.label + (m.status === "ready" ? "" : " [" + m.status + "]"),
+          m.status !== "ready");
+    else
+      add(m.id, m.label + " — " + m.status + " (audio mode)", true);
+  }
+  sel.dataset.built = sig;
+}
+
 async function status() {
   try {
     const s = await (await fetch(API + "/status")).json();
-    setStatus(s); fill(s.tuning || {});
+    setStatus(s); buildMt(s.roster || []); fill(s.tuning || {});
   } catch (e) {
     $("status").textContent = "subctl DOWN";
     $("status").className = "status off";

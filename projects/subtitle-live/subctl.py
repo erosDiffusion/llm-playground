@@ -30,8 +30,23 @@ NEEDS_RESTART = {"lang", "tts"}
 
 _lock = threading.Lock()
 
-MT_MODELS = {"qwen3-1.7b": "models/mt/qwen3-1.7b-q4km.gguf",
-             "qwen3-4b": "models/mt/qwen3-4b-q4km.gguf"}
+ROSTER = os.path.join(HERE, "models", "roster.json")
+
+
+def read_roster() -> list:
+    try:
+        return json.load(open(ROSTER)).get("models", [])
+    except Exception:
+        return []
+
+
+def mt_models() -> dict:
+    """id -> gguf path; only roster entries that llama.cpp can serve today."""
+    return {m["id"]: m["path"] for m in read_roster()
+            if m.get("kind") == "text-mt" and m.get("status") == "ready"
+            and m.get("path")}
+
+
 MT_PID = os.path.join(HERE, "mt.pid")
 LLAMA = os.path.expanduser("~/.unsloth/llama.cpp/build/bin/llama-server")
 
@@ -72,9 +87,9 @@ def mt_stop(reclaim=True):
 
 
 def mt_start(model):
-    gg = MT_MODELS.get(model)
+    gg = mt_models().get(model)
     if not gg or not os.path.exists(os.path.join(HERE, gg)):
-        return f"model '{model}' not downloaded"
+        return f"model '{model}' not in roster (or not downloaded)"
     mt_stop(reclaim=False)
     f = flex(5120)
     lf = open(os.path.join(HERE, "mt-server.log"), "wb")
@@ -150,6 +165,8 @@ class H(BaseHTTPRequestHandler):
             pid = running_pid()
             self._send({"running": pid is not None, "pid": pid,
                         "mt": mt_running() is not None,
+                        "roster": [m for m in read_roster()
+                                   if m.get("kind") in ("text-mt", "speech")],
                         "tuning": read_tuning(), "log": tail})
         else:
             self._send({"error": "unknown"}, 404)

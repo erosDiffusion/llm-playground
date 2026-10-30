@@ -1,0 +1,51 @@
+{
+  "_comment": "Central model roster for subtitle-live. kind: text-mt = translates subtitle lines; speech = needs audio input (audio mode only). status: ready | staged | broken | watch. subctl /mt only accepts kind=text-mt && status=ready.",
+  "models": [
+    {
+      "id": "strata",
+      "label": "Strata qwen3.8-flash (:8080)",
+      "kind": "text-mt",
+      "status": "ready",
+      "note": "agent engine; best quality + context; 0.3-0.5 s/line; no extra VRAM"
+    },
+    {
+      "id": "qwen3-1.7b",
+      "label": "Qwen3-1.7B Q4_K_M",
+      "kind": "text-mt",
+      "status": "ready",
+      "path": "models/mt/qwen3-1.7b-q4km.gguf",
+      "note": "llama.cpp :8096; ~0.05 s/line warm; flexes 5 GB from Strata"
+    },
+    {
+      "id": "qwen3-4b",
+      "label": "Qwen3-4B Q4_K_M",
+      "kind": "text-mt",
+      "status": "ready",
+      "path": "models/mt/qwen3-4b-q4km.gguf",
+      "note": "llama.cpp :8096; ~0.05 s/line; better quality than 1.7b"
+    },
+    {
+      "id": "madlad400-3b",
+      "label": "madlad400-3b-mt",
+      "kind": "text-mt",
+      "status": "broken",
+      "path": "models/mt/madlad-3b-mt-q4k.gguf",
+      "note": "2024 GGUF conversion fails to load in current llama.cpp; reconvert before use"
+    },
+    {
+      "id": "nemotron-transcribe",
+      "label": "Nemotron 3.5 Transcribe 30B-A4B NVFP4",
+      "kind": "speech",
+      "status": "staged",
+      "path": "models/nemotron",
+      "note": "audio mode ONLY (ASR + direct speech->text translation, de->en BLEU ~40). Needs vLLM 0.32 + NeMo Speech plugin, ~27 GB VRAM: STOP STRATA FIRST (this agent goes offline). Serve: ./nemotron_serve.sh"
+    },
+    {
+      "id": "hy-simulmt-30b",
+      "label": "Hy-SimulMT 30B-A3B (Tencent)",
+      "kind": "speech",
+      "status": "watch",
+      "note": "simultaneous speech-to-speech zh<->en ONLY - no German/Italian path, not usable here. GGUF exists but llama.cpp support not merged upstream (repo says wait). Re-check if language coverage grows."
+    }
+  ]
+}
