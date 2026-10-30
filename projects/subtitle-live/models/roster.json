@@ -46,6 +46,20 @@
       "kind": "speech",
       "status": "watch",
       "note": "simultaneous speech-to-speech zh<->en ONLY - no German/Italian path, not usable here. GGUF exists but llama.cpp support not merged upstream (repo says wait). Re-check if language coverage grows."
+    },
+    {
+      "id": "gemini-livetranslate",
+      "label": "Gemini 3.5 LiveTranslate (Google)",
+      "kind": "speech",
+      "status": "api",
+      "note": "cloud API only (Gemini Live API), no weights. Top FLEURS score but those benchmark rows are zh<->en live interpretation. Usable only for AUDIO mode with an API key + network latency; cue mode needs no speech translation. Would be a remote-mt roster backend if you supply a key."
+    },
+    {
+      "id": "qwen3.8-livetranslate",
+      "label": "Qwen3.8-LiveTranslate (Alibaba)",
+      "kind": "speech",
+      "status": "watch",
+      "note": "no open weights on HF (searched 2026-10-30). The text backbone family (Qwen3.8-Flash-Next) is what Strata serves as the agent itself - our local chain already covers its text half. Live/audio variant unpublished; re-check later."
     }
   ]
 }
