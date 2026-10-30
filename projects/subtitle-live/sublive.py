@@ -672,10 +672,19 @@ class Dub:
     def _stop_qwentts(self):
         p = getattr(self, "tts_proc", None)
         if p and p.poll() is None:
+            # llama-server can ignore SIGTERM -> escalate, and always wait so a
+            # Stop never leaves an orphan holding ~3 GB of VRAM.
             try:
                 os.killpg(os.getpgid(p.pid), signal.SIGTERM)
             except Exception:
                 pass
+            try:
+                p.wait(timeout=5)
+            except Exception:
+                try:
+                    os.killpg(os.getpgid(p.pid), signal.SIGKILL)
+                except Exception:
+                    pass
         try:  # give the expert cache back
             req = urllib.request.Request(
                 "http://127.0.0.1:8080/v1/vram",
@@ -1012,6 +1021,10 @@ def main():
                 pass
         if ov:
             ov.kill()
+        try:                       # explicit: do not rely on atexit ordering
+            dub._stop_qwentts()
+        except Exception:
+            pass
         sys.exit(0)
     signal.signal(signal.SIGTERM, bye)
     signal.signal(signal.SIGINT, bye)
