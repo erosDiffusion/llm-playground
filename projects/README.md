@@ -10,6 +10,7 @@ Self-contained source experiments and packaged capabilities: one project per fol
 | [blender-director](blender-director/) | agent preset: direct Blender 5.1.2 via MCP (description → shots → bake → render → mp4, cued `.md` + H3 reference prompts) + canonical reference scene scripts | `cp -r` to `~/.dsh/.agent-presets/` |
 | [github-dev](github-dev/) | agent preset: scoped GitHub access via the `gh-git` wrapper (token hygiene + allowlist runbook) | `cp -r` to `~/.dsh/.agent-presets/` (+ restore token/config/wrapper — see its README) |
 | [local-video](local-video/) | agent preset: local ComfyUI 8188 video pipeline runbook (H3 fl2va/ref2va, park/resume, aimdo memory control) | `cp -r` to `~/.dsh/.agent-presets/` |
+| [subtitle-live](subtitle-live/) | realtime translated+dubbed overlay for streaming video (CDP cue-mode read-only, Strata/local MT, Kokoro dub, subctl :8321 + Chrome ext; models NOT included) | source + ext copy; see README provenance header |
 | [dsh-customizations](dsh-customizations/) | the DSH harness layer: `system-stats` + `mcp-gateway` host plugins, inline-video chat patch (the profile composition itself is documented, not copied — private endpoint) | restore per its README |
 
 Standing rule (user, 2026-09-06): **anything we build that is reusable — cordis presets/agents, skills, local plugins, harness patches — gets packaged here** so it survives machine loss and can be re-deployed from the repo. New artifacts: add a folder + index row in the same commit.
