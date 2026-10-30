@@ -33,6 +33,34 @@
       "note": "2024 GGUF conversion fails to load in current llama.cpp; reconvert before use"
     },
     {
+      "id": "qwen3-8b",
+      "label": "Qwen3-8B Q4_K_M",
+      "kind": "text-mt",
+      "status": "rejected",
+      "note": "measured 2026-10-30 (mtbench.py, 12 real cues): EN 1 error/12 (best local), IT 5/12 - WORSE than qwen3-4b (le polizie, il libreria da sola). Needs 5 GB disk + 9.7 GB flex window. Deleted to save disk; re-download unsloth/Qwen3-8B-GGUF if wanted."
+    },
+    {
+      "id": "gemma-3-4b-it",
+      "label": "Gemma 3 4B IT Q4_K_M",
+      "kind": "text-mt",
+      "status": "rejected",
+      "note": "measured same bench: EN 3/12 (drifts on fragments: versichert->alright), IT 4/12 (stutters: si si chiama; Prima, prima). Emits curly quotes. Not adopted; deleted."
+    },
+    {
+      "id": "llama-3.1-8b",
+      "label": "LLaMA 3.1/3.3 8B Instruct",
+      "kind": "text-mt",
+      "status": "gated",
+      "note": "HF 401: Llama Community License must be accepted (no agent token). English-centric family, weakest of the class for DE->IT; not pursued."
+    },
+    {
+      "id": "phi-4-mini",
+      "label": "Microsoft Phi-4 / Phi-4-mini",
+      "kind": "text-mt",
+      "status": "gated",
+      "note": "HF 401 without license acceptance. Phi line is English-centric (only Phi-3.5-multilingual is a translation candidate) - wrong tool for DE->IT dubs."
+    },
+    {
       "id": "nemotron-transcribe",
       "label": "Nemotron 3.5 Transcribe 30B-A4B NVFP4",
       "kind": "speech",
@@ -48,8 +76,7 @@
       "note": "simultaneous speech-to-speech zh<->en ONLY - no German/Italian path, not usable here. GGUF exists but llama.cpp support not merged upstream (repo says wait). Re-check if language coverage grows."
     },
     {
-      "id": "gemini-livetranslate",
-      "label": "Gemini 3.5 LiveTranslate (Google)",
+      "id": "gemini-livetranslate",      "label": "Gemini 3.5 LiveTranslate (Google)",
       "kind": "speech",
       "status": "api",
       "note": "cloud API only (Gemini Live API), no weights. Top FLEURS score but those benchmark rows are zh<->en live interpretation. Usable only for AUDIO mode with an API key + network latency; cue mode needs no speech translation. Would be a remote-mt roster backend if you supply a key."

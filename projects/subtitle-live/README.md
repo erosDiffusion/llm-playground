@@ -104,6 +104,33 @@ not text translators and have no German path, so they cannot enter the
 selectable roster here. In cue mode they are irrelevant — Prime hands us text.
 In audio mode the German-capable option we already staged is Nemotron.
 
+## Measured MT bench (2026-10-30, `mtbench.py`)
+
+12 **real** German cues from a live session (register shifts, idioms, cue
+artifacts like missing spaces), same prompt shape as `translate()`, greedy,
+`enable_thinking:false`. Judged against the German source; n=12 so treat the
+counts as indicative. Strata (the agent engine) is the reference.
+
+| backend | EN avg | EN errors/12 | IT avg | IT errors/12 |
+|---|---|---|---|---|
+| **Strata** (qwen3.8-flash-next) | 0.44 s | 0 (ref) | 0.34 s | 0 (ref) |
+| **Qwen3-4B** (in roster) | 0.035 s | 2 | 0.042 s | 3 |
+| Qwen3-8B | 0.047 s | 1 | 0.063 s | **5** |
+| Gemma 3 4B IT | 0.046 s | 3 | 0.044 s | 4 |
+
+Takeaways: the generalist **8B tier does not pay** — it costs 2x disk and a
+9.7 GB flex window and is *worse at Italian* than the 4B we already run
+(`le polizie`, `il libreria da sola`). Gemma 3 4B is chatty on fragments and
+emits curly quotes. All local models fail the same way on **sentence fragments**
+(`…bitten kann, das Gelände zu verlassen`) — that is a context problem, which
+is exactly why Strata (with the dialogue context) stays the default and the
+small GGUFs are only a speed fallback.
+
+LLaMA 3.1/3.3-8B and Phi-4-mini were **not testable**: HF returns 401 (license
+gate). Phi is English-centric anyway; Llama is the weakest of the class for
+DE→IT. Google "AI Edge / Gemma on-device" is a mobile deployment path
+(LiteRT/MediaPipe), irrelevant to this pipeline.
+
 ## Nemotron 3.5 Transcribe (staged, models/nemotron)
 
 SpeechLM: ASR + direct speech→text translation (de→en BLEU ≈40) — **audio
@@ -158,8 +185,18 @@ it never blocks the player). `--overlay cdp` = inject into the page instead
 
 ## Files
 
-- `sublive.py` — the daemon (capture thread, ASR thread, translate, overlay)
+- `sublive.py` — the daemon (cue reader, translate, dub, overlay)
+- `suboverlay.py` — the click-through GTK overlay window (`/usr/bin/python3`)
+- `subctl.py` — control server on `:8321` (start/stop/restart/tune/mt/status+roster)
+- `ext/` — MV3 Chrome extension (popup drives subctl; roster-driven dropdown)
+- `panel_start.sh` / `panel_stop.sh` — Projects-panel recipes
+- `start.sh` / `stop.sh` — plain start/stop (ASR server only in audio mode)
+- `mtbench.py` — the translator benchmark used for the table above
+- `nemotron_serve.sh` / `nemotron_try.py` — serve + probe the Nemotron SpeechLM
+- `cdp_net.py` / `netprobe.py` / `trackprobe.py` — read-only CDP network probes
+  (track language lists; never write to the page)
 - `peek_player.py` — small CDP probe of the player state
 - `probe_tabs.py` — lists Chrome tabs over CDP
-- venv: `.venv` (faster-whisper, websockets); CDP client reused from
-  `../reels-digest/scripts/cdp.py`
+- `models/roster.json` — central model table (see above)
+- venv: `.venv` (kokoro-onnx, phonemizer, faster-whisper, websockets); CDP client
+  reused from `../reels-digest/scripts/cdp.py`
