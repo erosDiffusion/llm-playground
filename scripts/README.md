@@ -31,3 +31,6 @@ Archived operational scripts. Copies are byte-identical to the source; provenanc
 ## System-1 / decision-model stack (2026-10-23, this machine)
 - `local-system1-stack.md` — inventory + runbook: qwen3-8b embeddings :8091 (trade-harvest/data/gguf), qwen3-embed :8092 (~/models), CLM_v0.1-8B.pt heads (workspace projects/clm), ollama idle qwen3.5-abliterated:4b. Proven: CLM semantic gate AUC 0.973 (th 0.891), market gate dead (0.52).
 - `system1-up.sh` / `system1-down.sh` — bring the two llama-server embedding processes up/down idempotently (only :8091/:8092; never Strata/ComfyUI). Source: authored on this box 2026-10-23 from the live `ps` cmdlines.
+
+## Engine inventory (2026-10-31, this machine)
+- `local-engines-inventory.md` — full survey of every engine on the 5090 box: Strata, Ollama (systemd, lazy-load/5-min auto-unload), llama.cpp unsloth build, SGLang 0.5.19, vLLM 0.28.0, LM Studio 0.4.23, ComfyUI 0.43.0 (+ NInfer removal confirmed). Versions, paths, ports, launch recipes, VRAM decision ladder, re-probe block. Source: live probes 2026-10-31 (session 4fd2a5e4).
