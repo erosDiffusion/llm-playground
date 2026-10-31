@@ -28,6 +28,8 @@ config left nvidia-smi at 1,481 MiB free, i.e. ~570 MiB under reserve, engine 0.
 Flex down/up round-trip verified (515 slots,
 19,369 MiB free at reserve 22016). Lesson in runbook §B.5: do NOT chain post-swap steps onto the detached swap —
 the setsid chain was reaped mid-poll with the session's tool scope; post-checks run from the resumed chat.
+Opt-in perf knobs of 0.2.8 TESTED on this box, NOT adopted: STRATA_PIPED_MTP inert (pipelined groups need a layer split, /metrics batch_groups stays 1), STRATA_QSA_SLOTS partially inert (fused slots-attention launcher declines on the default CUDA build - qsa_slots_parity exits 77, engine keeps per-row calls; bitwise PASS only with STRATA_ATTN_LANECELL=1), STRATA_WINDOW_MAX_T=16 unreachable (batch-mtp window = 2 rows/slot, 2 slots = 4 rows), STRATA_KVA = approximate by design (rejected on result-quality grounds). No measurable gain, no extra swaps spent. Method note: greedy-output hashing is NOT a stable identity check on this engine - use the kernel parity tests (STRATA_BUILD_TESTS=ON, scratch build dir).
+
 Rollback ARMED MANUALLY: `engine/.previous` holds 0.1.52 (strata+libstrata_kq.so+stamp) - the local-compile swap archived NOTHING (gotcha, runbook step B.8: only unpacked-package installs create .previous; the 2026-10-27 "armed" note was false too; armed same day by rebuilding from v0.2.7).
 
 **Applied 2026-10-27 (first full run through this protocol):** v0.2.2 → **v0.2.7**, engine 0.1.47 → **0.1.52**.
