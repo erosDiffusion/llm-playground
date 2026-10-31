@@ -1,0 +1,58 @@
+{
+  "at": "2026-10-31T08:08:55",
+  "label": "before-v0.2.7",
+  "engine_build": {
+    "source": "local",
+    "version": "0.1.52",
+    "archs": [
+      120
+    ],
+    "vision": "gpu",
+    "cuda_dirs": [
+      "/usr/local/cuda-13.2/bin",
+      "/usr/local/cuda-13.2/lib64"
+    ],
+    "src": "b7ff2efbe0819d6b",
+    "vision_src": "587022c4c655ad94"
+  },
+  "health_loaded": true,
+  "model": "qwen3.8-flash-next-iq3_s",
+  "runs": 3,
+  "max_tokens": 256,
+  "decode_tok_s_median": 200.5,
+  "decode_all": [
+    140.1,
+    200.5,
+    201.7
+  ],
+  "prefill_tok_s_median": 391.3,
+  "prefill_all": [
+    197.0,
+    391.3,
+    416.8
+  ],
+  "prompt_ms_all": [
+    568,
+    289,
+    271
+  ],
+  "completion_tokens": [
+    256,
+    256,
+    256
+  ],
+  "slots": [
+    {
+      "id": 0,
+      "n_ctx": 262144,
+      "is_processing": false,
+      "n_prompt_tokens": 410
+    },
+    {
+      "id": 1,
+      "n_ctx": 262144,
+      "is_processing": false,
+      "n_prompt_tokens": 25674
+    }
+  ]
+}

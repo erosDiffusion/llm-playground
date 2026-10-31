@@ -13,7 +13,19 @@ are **untracked there**, so they survive checkouts but exist nowhere else. This 
 | `warm-build.py` | byte-identical copy of `warm-build-2026-10-13.py` — warms `build/` + `build-vision/` with setup.py's EXACT `build_engine` defs WITHOUT touching `engine/` (locked by the running server), so the swap stop→copy is seconds. Imports setup.py as a module (`main` is `__main__`-guarded), reads `engine/BUILD.json` for archs. Verified working unchanged on v0.2.2 | `~/Apps/Strata/warm-build-2026-10-13.py` (untracked) | 2026-10-23 |
 | `swap-strata.sh` | **generalized** engine swap (was the dated `swap-2026-10-21.sh`): SIGINT `serve/server.py` → wait for :8080 free → `sh setup.sh --update` (no-op build + engine copy + stamp; old binaries → `engine/.previous`) → `START_SCRIPT` detached → poll `/health` → log. RUN DETACHED; drops the brain ~90 s–3 min, needs user OK. Env: `START_SCRIPT`, `PORT`, `STRATA_HOME`. Live copy: `~/.dsh/bin/swap-strata.sh` | generalized 2026-10-23 from the applied 2026-10-21 swap (log: brain down 26 s, /health green, 182 tok/s) | 2026-10-23 |
 | `strata-upgrade-check.sh` | read-only preflight: lists remote tags + fetches only the target tag ref (`git fetch --tags` breaks after the 2026-10 history rewrite — "would clobber existing tag"), extracts the LIVE engine's launch flags from `/proc/<pid>/cmdline` (fallback: config `args`), greps each in the new tag's source, verifies `serve/server.py` + `setup.py` + `setup.sh` + config keys. No risk to the running brain; self-tested 2026-10-23 (16 live flags vs v0.2.2 and v0.1.39: 0 missing). Live copy: `~/.dsh/bin/strata-upgrade-check.sh` | authored 2026-10-23 (automates the manual 14-flag check of 2026-10-21) | 2026-10-23 |
+| `bench-strata.py` | deterministic before/after performance probe: 3 greedy 256-token /v1/chat/completions vs :8080 with per-run nonces, medians of `timings.predicted_per_second` / `prompt_per_second` (llama.cpp names, same fields Strata Control's benchmark reads), JSON out + slots/BUILD.json context. Pure HTTP, safe while the brain is live. Live copy: `~/.dsh/bin/bench-strata.py`, results in `bench-results/` | authored 2026-10-31 (user order: benchmark before/after every Strata upgrade) | 2026-10-31 |
 | `UPDATE-2026-10-13.md`, `UPDATE-2026-10-21.md`, `UPDATE-2026-10-27.md` | dated handoff sheets from the three applied upgrades (state, compatibility checks, apply/rollback, gotchas) — kept verbatim as the archaeology trail | `~/Apps/Strata/UPDATE-*.md` (untracked) | 2026-10-27 |
+
+**Applied 2026-10-31:** v0.2.7 → **v0.2.8**, engine 0.1.52 → **0.1.54**.
+Preflight clean (18 flags 0 missing, 0 config keys missing); warm-build unchanged (CUDA ON confirmed, ggml
+commit = tag tip); detached swap: stop→`setup.sh --update`→launcher OK, engine back ~45 s. Bench (new protocol
+step): decode median 200.5 → 199.9 tok/s (best run 201.7 → 217.1), prefill ~391 → ~377 — flat, no regression.
+Engine 0.1.54 carries the #4474 expert-cache accounting fix: full auto cache now 9,574 slots ≈ 18.6 GB (was
+~10.8k ≈ 21 GB) and the reserve is honest — flex probe at `reserve_mib:null` reports 2,474 MiB free (≥ 2,048
+requested; pre-fix the card sat ~240 MiB UNDER reserve). Flex down/up round-trip verified (515 slots,
+19,369 MiB free at reserve 22016). Lesson in runbook §B.5: do NOT chain post-swap steps onto the detached swap —
+the setsid chain was reaped mid-poll with the session's tool scope; post-checks run from the resumed chat.
+Rollback armed: `engine/.previous` holds 0.1.52.
 
 **Applied 2026-10-27 (first full run through this protocol):** v0.2.2 → **v0.2.7**, engine 0.1.47 → **0.1.52**.
 Preflight 18 flags 0 missing; `warm-build.py` worked UNCHANGED on 0.2.7 too (275 targets, 3m27s, brain never

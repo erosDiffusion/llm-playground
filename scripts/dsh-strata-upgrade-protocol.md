@@ -110,22 +110,37 @@ Quiet part first — it can run any time while the brain is live and costs nothi
    (fallback: the config's `args` array), greps each flag in the newest tag's source, and checks
    `serve/server.py` + `setup.py` + `setup.sh` + config-key presence. Anything flagged MISSING = review that flag
    by hand before proceeding. (Manual version of these checks on 2026-10-21: 14 flags, all present in 0.2.2.)
-2. **Move code WITHOUT touching the running engine:** `cd ~/Apps/Strata && git checkout <newtag>`.
+2. **Benchmark BEFORE (baseline, ~1 min):** `python3 ~/.dsh/bin/bench-strata.py --label before-<oldtag> --runs 3
+   --out ~/.dsh/bench-results/<date>-<oldtag>-before.json` — greedy 256-token /v1/chat/completions against :8080,
+   per-run timings read from the reply's `timings` block (llama.cpp names: `predicted_per_second`,
+   `prompt_per_second` — same fields Strata Control's native benchmark uses), medians reported, JSON saved.
+   (Added 2026-10-31 on user order; baseline v0.2.7/engine 0.1.52: decode ~200 tok/s, prefill ~390; a first run
+   right after idle ~140 = cold expert cache, ignore it, the median is the number.)
+3. **Move code WITHOUT touching the running engine:** `cd ~/Apps/Strata && git checkout <newtag>`.
    Untracked local files (START-*.sh, warm-build, configs, `engine/`, packs) survive every checkout — they are
    untracked; verify with `git status --porcelain` after.
-3. **Warm-build while running:** `cd ~/Apps/Strata && .venv/bin/python warm-build-2026-10-13.py` — calls setup.py's
+4. **Warm-build while running:** `cd ~/Apps/Strata && .venv/bin/python warm-build-2026-10-13.py` — calls setup.py's
    own cmake_build with build_engine's exact defs into `build/` + `build-vision/`, never touches `engine/`
    (locked by the live server). Proven unchanged on 0.2.2; if setup.py hooks moved (function renamed), diff against
    vault copy [`strata/warm-build.py`](strata/warm-build.py) and update. Cmake gotcha (2026-10-13): if the CUDA
    compiler path changed, cmake can silently reconfigure with CUDA OFF → `rm -rf build/ build-vision/` and re-run.
-4. **Ask the user for the brain-drop window.** Then run the swap DETACHED (this session dies with it):
+5. **Ask the user for the brain-drop window.** Then run the swap DETACHED (this session dies with it):
    `setsid bash ~/.dsh/bin/swap-strata.sh >/dev/null 2>&1 &` — env `START_SCRIPT` (default `START-262k.sh`),
    `PORT` (8080). It SIGINTs `serve/server.py`, waits for :8080 to free, runs `sh setup.sh --update` (now a no-op
    build + seconds-long engine copy; stamps BUILD.json; old binaries → `engine/.previous`), starts the launcher
    detached, polls `/health` until `"loaded": true`, logs to `swap-<date>.log` with the rollback line on timeout.
-5. **Resume the chat session in the GUI** once `/health` is green (the GUI/DSH process itself never dies).
-6. **Post-swap verify:** `cat ~/Apps/Strata/engine/BUILD.json` (new version) → first chat turns report decode
-   tok/s (expect ~180 at full cache; drop = expert cache not warmed, fine) → flex API still alive:
+   Do NOT chain follow-ups (bench, flex probe) onto the detached swap: 2026-10-31 the setsid chain was reaped
+   mid-poll together with the dead session's tool scope (the swap itself had finished stopping/building/launching,
+   so the engine came back anyway) — run every post-swap check from the RESUMED session instead.
+6. **Resume the chat session in the GUI** once `/health` is green (the GUI/DSH process itself never dies).
+7. **Post-swap verify + benchmark:** `cat ~/Apps/Strata/engine/BUILD.json` (new version) → re-run the bench
+   `--label after-<newtag> --out ~/.dsh/bench-results/<date>-<newtag>-after.json`, diff medians vs BEFORE;
+   judge decode tok/s mainly (expect ~180–220 at full cache; a first post-boot run lower = expert cache not
+   warmed, fine). A cache-accounting fix in engine 0.1.54 (#4474) re-priced late CUDA allocations, so full
+   auto-cache sizing moved to 9,574 slots ≈ 18.6 GB and the reserve is now honest (probe: 2,048 reserve →
+   2,474 MiB free, 2026-10-31; pre-fix the card ran ~240 MiB UNDER the requested reserve) — a ~1–4 % prefill
+   drift from the smaller cache is expected, not a regression.
+   → flex API still alive:
    `curl -sX POST 127.0.0.1:8080/v1/vram -d '{"reserve_mib":null}'` returns the state probe (see
    [`strata-vram-flex.md`](strata-vram-flex.md)). "Re-runs do not tune again" (0.2.x): second launch ≈13 s, not 520 s.
 
@@ -154,6 +169,8 @@ the repo untracked + archived in vault [`strata/`](strata/README.md)): `UPDATE-2
 | §A.3 dry-run (3 patches) | ~1 min |
 | §A.4 apply + builds (no conflict) | ~5–10 min |
 | §A.6 client tests | ~3–5 min |
-| §B.2–3 warm build (cached) | 1–5 min (65 s full recompile seen when CUDA defs changed) |
-| §B.4 brain drop | ~90 s (timeout 300 s then rollback) |
+| §B.2 BEFORE bench | ~1 min, zero risk |
+| §B.3–4 warm build (cached) | 1–5 min (65 s full recompile seen when CUDA defs changed) |
+| §B.5 brain drop | ~90 s (timeout 300 s then rollback; engine back ~45 s 2026-10-31) |
+| §B.7 AFTER bench + flex probe | ~1.5 min |
 | worst case (patch conflicts) | +30–60 min hand re-merge, live tree untouched |
