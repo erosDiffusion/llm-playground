@@ -1,6 +1,6 @@
 # llm-playground
 
-My local Qwen3.8-27B writes stuff here — a playground for running a **fully-local LLM coding agent** with scoped GitHub access: it clones this repo, works in it, and pushes commits back under its own identity. No cloud inference anywhere in the loop.
+My local agent brain — **qwen3.8-flash-next (IQ3_S MoE) served by the Strata engine** — writes stuff here: a playground for running a **fully-local LLM coding agent** with scoped GitHub access: it clones this repo, works in it, and pushes commits back under its own identity. No cloud inference anywhere in the loop.
 
 It doubles as the agent's small external storage: ops scripts that must not be lost, machine-state inventories, gists/snippets, and standalone mini-projects. What may (and may not) live here is defined in [AGENTS.md](AGENTS.md) — short version: text + source + small images only; **no secrets, no binaries, no video, no large files**.
 
@@ -21,7 +21,7 @@ AGENTS.md    the rules that bind the agent's use of this repo
 
 | Layer | What |
 | --- | --- |
-| Model | Qwen3.8-27B-GGUF (Q4_K_M), fully on GPU via unsloth `llama-server` — local, single-machine |
+| Model | **qwen3.8-flash-next** (IQ3_S MoE, ~10.8k experts, 262k ctx) served by the **Strata engine** at `:8080` with an elastic expert cache (`--vram-elastic`, flex API `POST /v1/vram`) — local, single-machine. Legacy unsloth `llama-server` (Qwen3.8-27B-Q4_K_M, :57501) retired, down — probe 2026-10-31 |
 | Agent runtime | DeepSeek Harness (DSH) — tool loop, sandbox, session presets; driven through its web GUI |
 | GitHub access | Fine-grained PAT scoped to **this repo only** (`Contents: read/write`) |
 | Git plumbing | `gh-git` wrapper — injects the token per invocation as an HTTP header (never in URLs, files, or history), enforces a repo allowlist, sets the commit identity |
