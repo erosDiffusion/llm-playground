@@ -136,10 +136,11 @@ Quiet part first — it can run any time while the brain is live and costs nothi
 7. **Post-swap verify + benchmark:** `cat ~/Apps/Strata/engine/BUILD.json` (new version) → re-run the bench
    `--label after-<newtag> --out ~/.dsh/bench-results/<date>-<newtag>-after.json`, diff medians vs BEFORE;
    judge decode tok/s mainly (expect ~180–220 at full cache; a first post-boot run lower = expert cache not
-   warmed, fine). A cache-accounting fix in engine 0.1.54 (#4474) re-priced late CUDA allocations, so full
-   auto-cache sizing moved to 9,574 slots ≈ 18.6 GB and the reserve is now honest (probe: 2,048 reserve →
-   2,474 MiB free, 2026-10-31; pre-fix the card ran ~240 MiB UNDER the requested reserve) — a ~1–4 % prefill
-   drift from the smaller cache is expected, not a regression.
+    warmed, fine). A cache-accounting fix in engine 0.1.54 (#4474) leaves ~256 MiB for CUDA allocations that land
+    after cache sizing, making the reserve honest (2026-10-31 probe: `reserve_mib:null` -> 2,474 MiB free >= 2,048
+    requested; pre-upgrade the same config sat at 1,481 MiB free = ~570 under reserve). The full auto cache moved
+    to 9,574 slots ~ 18.6 GB (9,657 with the live `--slots 2` config pre-upgrade - judge cache-size drift against
+    the WITH-flags number, 10,816 is flag-free). A ~1-4 % prefill drift is expected, not a regression.
    → flex API still alive:
    `curl -sX POST 127.0.0.1:8080/v1/vram -d '{"reserve_mib":null}'` returns the state probe (see
    [`strata-vram-flex.md`](strata-vram-flex.md)). "Re-runs do not tune again" (0.2.x): second launch ≈13 s, not 520 s.

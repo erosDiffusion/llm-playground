@@ -20,9 +20,12 @@ are **untracked there**, so they survive checkouts but exist nowhere else. This 
 Preflight clean (18 flags 0 missing, 0 config keys missing); warm-build unchanged (CUDA ON confirmed, ggml
 commit = tag tip); detached swap: stop→`setup.sh --update`→launcher OK, engine back ~45 s. Bench (new protocol
 step): decode median 200.5 → 199.9 tok/s (best run 201.7 → 217.1), prefill ~391 → ~377 — flat, no regression.
-Engine 0.1.54 carries the #4474 expert-cache accounting fix: full auto cache now 9,574 slots ≈ 18.6 GB (was
-~10.8k ≈ 21 GB) and the reserve is honest — flex probe at `reserve_mib:null` reports 2,474 MiB free (≥ 2,048
-requested; pre-fix the card sat ~240 MiB UNDER reserve). Flex down/up round-trip verified (515 slots,
+Engine 0.1.54 carries the #4474 expert-cache accounting fix: the auto cache now leaves ~256 MiB for the CUDA
+allocations that land after sizing — full cache 9,574 slots ≈ 18.6 GB (with the live `--slots 2` config it was
+9,657 pre-upgrade, so the fix re-priced only ~83 slots ≈ 160 MiB; 10,816 is the flag-free number). The reserve
+is now honest — flex probe at `reserve_mib:null` reports 2,474 MiB free (≥ 2,048 requested; pre-upgrade the same
+config left nvidia-smi at 1,481 MiB free, i.e. ~570 MiB under reserve, engine 0.1.52 + #4474 absence).
+Flex down/up round-trip verified (515 slots,
 19,369 MiB free at reserve 22016). Lesson in runbook §B.5: do NOT chain post-swap steps onto the detached swap —
 the setsid chain was reaped mid-poll with the session's tool scope; post-checks run from the resumed chat.
 Rollback armed: `engine/.previous` holds 0.1.52.
