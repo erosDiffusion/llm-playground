@@ -145,6 +145,15 @@ Quiet part first — it can run any time while the brain is live and costs nothi
    `curl -sX POST 127.0.0.1:8080/v1/vram -d '{"reserve_mib":null}'` returns the state probe (see
    [`strata-vram-flex.md`](strata-vram-flex.md)). "Re-runs do not tune again" (0.2.x): second launch ≈13 s, not 520 s.
 
+8. **Arm rollback (local-compile swaps do NOT do this automatically - gotcha 2026-10-31):** a local-compile
+   `setup.sh --update` OVERWRITES `engine/strata` in place; the `.previous` archive is created only when an
+   unpacked prebuilt engine is installed (`install_unpacked` in setup.py). Both 2026-10-27 and 2026-10-31 ran
+   local-compile swaps, so `--rollback-engine` had NOTHING to roll back to until armed by hand:
+   `git checkout <oldtag> && .venv/bin/python warm-build-2026-10-13.py`, then copy the built `strata` +
+   `libstrata_kq.so` from `build/` plus a correct BUILD.json stamp into `engine/.previous`, then
+   `git checkout <newtag>` + warm-build again to leave `build/` current, and verify with setup.py's own
+   `engine_version_of(Path('engine/.previous'))`. Do this the SAME DAY as the swap.
+
 **Strata rollback (one line, seconds):**
 ```bash
 cd ~/Apps/Strata && python3 setup.py --rollback-engine   # engine/ <-> engine/.previous

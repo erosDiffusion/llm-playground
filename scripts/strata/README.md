@@ -28,7 +28,7 @@ config left nvidia-smi at 1,481 MiB free, i.e. ~570 MiB under reserve, engine 0.
 Flex down/up round-trip verified (515 slots,
 19,369 MiB free at reserve 22016). Lesson in runbook §B.5: do NOT chain post-swap steps onto the detached swap —
 the setsid chain was reaped mid-poll with the session's tool scope; post-checks run from the resumed chat.
-Rollback armed: `engine/.previous` holds 0.1.52.
+Rollback ARMED MANUALLY: `engine/.previous` holds 0.1.52 (strata+libstrata_kq.so+stamp) - the local-compile swap archived NOTHING (gotcha, runbook step B.8: only unpacked-package installs create .previous; the 2026-10-27 "armed" note was false too; armed same day by rebuilding from v0.2.7).
 
 **Applied 2026-10-27 (first full run through this protocol):** v0.2.2 → **v0.2.7**, engine 0.1.47 → **0.1.52**.
 Preflight 18 flags 0 missing; `warm-build.py` worked UNCHANGED on 0.2.7 too (275 targets, 3m27s, brain never
