@@ -1,0 +1,31 @@
+{
+  "name": "dsh-strata-flex",
+  "version": "0.1.0",
+  "description": "Footer buttons in the DSH Web GUI to lower / reclaim the Strata agent engine's VRAM (elastic expert cache flex) with one click",
+  "type": "module",
+  "license": "MIT",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "client.js",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": ["dsh", "deepseek-harness", "plugin", "strata", "vram"],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}
