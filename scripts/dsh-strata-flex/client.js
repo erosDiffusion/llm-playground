@@ -148,7 +148,11 @@ window.__ModuleLoader__.load({
               position: 'absolute', bottom: '100%', left: 0, marginBottom: 6, zIndex: 60,
               display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px',
               border: '1px solid color-mix(in srgb, currentColor 30%, transparent)',
-              background: 'color-mix(in srgb, currentColor 8%, transparent)',
+              // OPAQUE on purpose: it floats over the chat, and a translucent panel let
+              // message text show through the slider. Canvas is the shell's own surface
+              // colour, so this stays theme-correct (dark or light) with no alpha.
+              background: 'color-mix(in srgb, currentColor 10%, Canvas)',
+              boxShadow: '0 6px 18px rgba(0, 0, 0, 0.28)',
               borderRadius: 8, minWidth: 244, cursor: 'default',
             },
             onMouseEnter: show, onMouseLeave: scheduleHide,
