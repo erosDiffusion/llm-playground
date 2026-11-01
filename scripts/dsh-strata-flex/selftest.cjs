@@ -58,7 +58,7 @@ if (!/type="range"/.test(opened)) fails.push('hover state has no range input')
 for (const attr of ['min="1024"', 'max="17920"', 'step="512"']) {
   if (!input.includes(attr)) fails.push(`range input missing ${attr} (got: ${input.slice(0, 120)})`)
 }
-for (const want of ['full speed', 'half', 'yield everything', 'brain holds', 'model weights', 'engine state unknown', 'between engine requests']) {
+for (const want of ['full speed', 'half', 'yield everything', 'brain holds', 'weights and KV', 'engine state unknown', 'between engine requests']) {
   if (!opened.includes(want)) fails.push(`hover popover missing: ${want}`)
 }
 

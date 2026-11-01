@@ -184,7 +184,7 @@ window.__ModuleLoader__.load({
               }, busy === `set ${val}` ? 'working…' : engineCache === val ? `applied ${gib(val)} GiB` : `apply ${gib(val)} GiB`),
             ),
             h('span', { style: { fontSize: '10.5px', opacity: 0.6 } },
-              'the cache bottoms out near 1 GiB (≈515 experts); the engine’s other ~13 GiB is model weights and no slider can move it'),
+              'hard floor, measured: the engine never goes below 515 experts (1.0 GiB cache) and frees at most ~18.8 GiB — its other ~12 GiB is weights and KV that this knob cannot touch'),
             h('span', { style: { fontSize: '11px', opacity: 0.8 } },
               state && state.expert_slots != null
                 ? `engine right now: ${state.expert_slots}/${state.expert_slots_full} experts resident · ${gb(state.expert_cache_mib || 0)} GiB cache · ${gb(state.vram_free_mib || 0)} GiB free`

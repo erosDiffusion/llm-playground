@@ -77,9 +77,8 @@ class Flex {
     // drag and a starved engine. 512 MiB is the engine's own resize segment.
     this.segment = Number.isInteger(cfg.resize_segment_mib) ? cfg.resize_segment_mib : 512
     this.setMin = Number.isInteger(cfg.set_min_mib) ? cfg.set_min_mib : 2048
-    this.setMax = Number.isInteger(cfg.set_max_mib) ? cfg.set_max_mib : this.floor
-    this.blockOnComfy = cfg.block_reclaim_on_comfy !== false
-    this.comfyBase = String(cfg.comfy_url || 'http://127.0.0.1:8188').replace(/\/+$/, '')
+    // Default ceiling = the point where the engine stops delivering, not the largest number
+    // it will echo back. (Proven: asking 26,624 still yields 19,261 free.)
     // The engine takes reserve_mib (keep free for other programs). The UI asks in the
     // other direction — how much the brain HOLDS — so the conversion lives here:
     //   expert_cache_mib = cache_span_mib - reserve_mib, floored at cache_floor_mib.
@@ -87,6 +86,14 @@ class Flex {
     // 14,336 -> 5,632; 20,480 and 22,016 -> 1,024 (the floor). Span = 19,968.
     this.cacheSpan = Number.isInteger(cfg.cache_span_mib) ? cfg.cache_span_mib : 19968
     this.cacheFloor = Number.isInteger(cfg.cache_floor_mib) ? cfg.cache_floor_mib : 1024
+    // The engine's own hard floor, measured 2026-11-01: it never shrinks below 515 expert
+    // slots (1,024 MiB cache) and free VRAM stops at ~19.3 GiB. Above that the ask is
+    // reported back but NOT delivered, so the useful ceiling is where delivery stops:
+    //   reserve_max = cache_span - cache_floor = 18,944.
+    this.deliveredCeilingMib = Number.isInteger(cfg.delivered_ceiling_mib) ? cfg.delivered_ceiling_mib : 19261
+    this.setMax = Number.isInteger(cfg.set_max_mib) ? cfg.set_max_mib : (this.cacheSpan - this.cacheFloor)
+    this.blockOnComfy = cfg.block_reclaim_on_comfy !== false
+    this.comfyBase = String(cfg.comfy_url || 'http://127.0.0.1:8188').replace(/\/+$/, '')
   }
 
   /** Wire the HTTP route onto the plugin context; returns a disposer. */
@@ -141,7 +148,7 @@ class Flex {
           ok: true,
           state: vramSummary(m.json?.engine),
           // The UI needs the conversion constants to draw its slider honestly.
-          config: { floor: this.floor, busy: this.busy, set_min: this.setMin, set_max: this.setMax, segment: this.segment, cache_span: this.cacheSpan, cache_floor: this.cacheFloor, cache_max: this.cacheSpan - this.setMin },
+          config: { floor: this.floor, busy: this.busy, set_min: this.setMin, set_max: this.setMax, segment: this.segment, cache_span: this.cacheSpan, cache_floor: this.cacheFloor, cache_max: this.cacheSpan - this.setMin, cache_min: this.cacheFloor, delivered_ceiling_mib: this.deliveredCeilingMib },
         })
         return
       }
