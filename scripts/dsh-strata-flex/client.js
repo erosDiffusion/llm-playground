@@ -42,7 +42,6 @@ window.__ModuleLoader__.load({
     const SEG = 512, CACHE_MIN = 1024, CACHE_MAX = 17920
     const snap = (n) => Math.min(CACHE_MAX, Math.max(CACHE_MIN, Math.round(n / SEG) * SEG))
     const gib = (mib) => (mib / 1024).toFixed(1)
-    const gibNum = (mib) => mib / 1024
     const lowered = (s) => s && s.expert_slots != null && s.expert_slots_full != null
       ? s.expert_slots < s.expert_slots_full * 0.9 : false
 

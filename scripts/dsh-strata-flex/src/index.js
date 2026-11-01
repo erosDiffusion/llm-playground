@@ -80,6 +80,13 @@ class Flex {
     this.setMax = Number.isInteger(cfg.set_max_mib) ? cfg.set_max_mib : this.floor
     this.blockOnComfy = cfg.block_reclaim_on_comfy !== false
     this.comfyBase = String(cfg.comfy_url || 'http://127.0.0.1:8188').replace(/\/+$/, '')
+    // The engine takes reserve_mib (keep free for other programs). The UI asks in the
+    // other direction — how much the brain HOLDS — so the conversion lives here:
+    //   expert_cache_mib = cache_span_mib - reserve_mib, floored at cache_floor_mib.
+    // Verified against live probes on 2026-11-01: reserve 2048 -> cache 17,920;
+    // 14,336 -> 5,632; 20,480 and 22,016 -> 1,024 (the floor). Span = 19,968.
+    this.cacheSpan = Number.isInteger(cfg.cache_span_mib) ? cfg.cache_span_mib : 19968
+    this.cacheFloor = Number.isInteger(cfg.cache_floor_mib) ? cfg.cache_floor_mib : 1024
   }
 
   /** Wire the HTTP route onto the plugin context; returns a disposer. */
@@ -130,7 +137,12 @@ class Flex {
     try {
       if (req.method === 'GET' && (p === '/api/strata-flex' || p === '/api/strata-flex/state')) {
         const m = await engineRequest(this.base, '/metrics', { timeoutMs: 10000 })
-        this.sendJson(res, 200, { ok: true, state: vramSummary(m.json?.engine), config: { floor: this.floor, busy: this.busy } })
+        this.sendJson(res, 200, {
+          ok: true,
+          state: vramSummary(m.json?.engine),
+          // The UI needs the conversion constants to draw its slider honestly.
+          config: { floor: this.floor, busy: this.busy, set_min: this.setMin, set_max: this.setMax, segment: this.segment, cache_span: this.cacheSpan, cache_floor: this.cacheFloor, cache_max: this.cacheSpan - this.setMin },
+        })
         return
       }
       if (req.method === 'POST' && (p === '/api/strata-flex' || p === '/api/strata-flex/flex')) {
@@ -149,6 +161,18 @@ class Flex {
         if (action === 'flex') reserve = this.floor
         else if (action === 'busy') reserve = this.busy
         else if (action === 'reclaim' || action === 'state') reserve = null
+        else if (action === 'set' && payload.cache_mib != null) {
+          // Preferred form: the UI speaks "VRAM the brain holds", the engine speaks
+          // "keep this much free". One conversion, in the owner of the guard.
+          const raw = Number(payload.cache_mib)
+          if (!Number.isFinite(raw)) return this.sendJson(res, 400, { ok: false, error: 'cache_mib must be a number' })
+          const seg = this.segment
+          const hiCache = this.cacheSpan - this.setMin
+          const snapped = Math.round(raw / seg) * seg
+          const c = Math.min(hiCache, Math.max(this.cacheFloor, snapped))
+          reserve = this.cacheSpan - c
+          note = c !== raw ? `cache ${raw} -> ${c} MiB (segment ${seg}, floor ${this.cacheFloor}, max ${hiCache})` : `cache ${c} MiB -> keep ${reserve} MiB free`
+        }
         else if (action === 'set') {
           // The engine takes ANY integer >= 0 with no floor of its own, so the guard
           // lives here: a slider that can ask for 0 would starve the engine mid-request.
