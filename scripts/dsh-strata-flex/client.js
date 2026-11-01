@@ -64,6 +64,11 @@ window.__ModuleLoader__.load({
             const r = await doAction(action, value)
             if (r.state) setState(r.state)
             if (r.note) setErr(r.note)
+            // The engine resizes BETWEEN requests, so its own reply can be a beat ahead of
+            // what /metrics reports. Re-read twice so the numbers visibly move under the
+            // slider instead of looking frozen.
+            if (action === 'set' || action === 'reclaim' || action === 'flex') refreshSoon()
+            return r
           } catch (e) { setErr(String(e && e.message ? e.message : e)) }
           finally { setBusy(null); setTimeout(() => setErr(null), 8000) }
         }, [])
@@ -89,11 +94,18 @@ window.__ModuleLoader__.load({
         const [settling, setSettling] = useState(false)
         const hideTimer = useRef(null)
         const settleTimer = useRef(null)
+        const pollTimers = useRef([])
 
         useEffect(() => () => {
           if (hideTimer.current) clearTimeout(hideTimer.current)
           if (settleTimer.current) clearTimeout(settleTimer.current)
+          for (const t of pollTimers.current) clearTimeout(t)
         }, [])
+
+        const refreshSoon = () => {
+          for (const t of pollTimers.current) clearTimeout(t)
+          pollTimers.current = [setTimeout(load, 700), setTimeout(load, 1800)]
+        }
 
         const show = () => { if (hideTimer.current) clearTimeout(hideTimer.current); setOpen(true) }
         const scheduleHide = () => {
@@ -151,8 +163,12 @@ window.__ModuleLoader__.load({
               h('span', { style: { fontSize: '10.5px', opacity: 0.6, marginLeft: 'auto' } },
                 settling ? 'settling…' : 'applies when you stop'),
             ),
+            h('span', { style: { fontSize: '11px', opacity: 0.8 } },
+              state && state.expert_slots != null
+                ? `engine right now: ${state.expert_slots}/${state.expert_slots_full} experts resident · ${gb(state.expert_cache_mib || 0)} GiB cache · ${gb(state.vram_free_mib || 0)} GiB free`
+                : 'engine state unknown — click the dotted pill to re-read'),
             h('span', { style: { fontSize: '10.5px', opacity: 0.6 } },
-              'one engine call per settle · snapped to the 512 MiB segment · reclaim refused while ComfyUI is busy'),
+              'one engine call per settle · snapped to the 512 MiB segment · the resize lands between engine requests, so the numbers can take a beat'),
           ) : null,
           h('button', { type: 'button', style: { ...pill, fontWeight: low ? 700 : 400 }, disabled: !!busy, onClick: () => act('flex') }, busy === 'flex' ? '…' : '⬇ lower brain'),
           h('button', { type: 'button', style: { ...pill, fontWeight: low ? 400 : 700 }, disabled: !!busy, onClick: () => act('reclaim') }, busy === 'reclaim' ? '…' : '⬆ reclaim'),
