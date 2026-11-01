@@ -22,11 +22,11 @@ window.__ModuleLoader__.load({
       const j = await r.json()
       return j && j.ok ? j.state : null
     }
-    async function doAction(action, reserveMib) {
+    async function doAction(action, cacheMib) {
       const r = await fetch(API, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(reserveMib == null ? { action } : { action, reserve_mib: reserveMib }),
+        body: JSON.stringify(cacheMib == null ? { action } : { action, cache_mib: cacheMib }),
       })
       const j = await r.json()
       if (j && j.ok) return { state: j.state, note: j.note, applied: j.reserve_applied }
@@ -36,9 +36,13 @@ window.__ModuleLoader__.load({
     // Bounds mirror the host's clamp. The engine resizes in 512 MiB segments and accepts any
     // integer with no floor, so the guard is ours. Probed 2026-11-01: full cache 18,734 MiB,
     // 1,933 MiB free, one proven window at reserve 22016 giving ~19.4 GiB free.
-    const SEG = 512, SET_MIN = 2048, SET_MAX = 22016
-    const snap = (n) => Math.min(SET_MAX, Math.max(SET_MIN, Math.round(n / SEG) * SEG))
+    // Slider is in the direction the user reads on the engine's own monitor: how much
+    // VRAM the brain holds (its expert cache). The host converts to reserve_mib and owns
+    // the clamp; these defaults are overwritten from /state's config when it answers.
+    const SEG = 512, CACHE_MIN = 1024, CACHE_MAX = 17920
+    const snap = (n) => Math.min(CACHE_MAX, Math.max(CACHE_MIN, Math.round(n / SEG) * SEG))
     const gib = (mib) => (mib / 1024).toFixed(1)
+    const gibNum = (mib) => mib / 1024
     const lowered = (s) => s && s.expert_slots != null && s.expert_slots_full != null
       ? s.expert_slots < s.expert_slots_full * 0.9 : false
 
@@ -89,7 +93,7 @@ window.__ModuleLoader__.load({
         // pixel, because each apply is a real engine call that may wait for a gap between
         // requests. Clicking the button itself still does the fixed lower, as before.
         const [open, setOpen] = useState(false)
-        const [val, setVal] = useState(14336)
+        const [val, setVal] = useState(CACHE_MAX)
         const [applied, setApplied] = useState(null)
         const [settling, setSettling] = useState(false)
         const hideTimer = useRef(null)
@@ -134,7 +138,7 @@ window.__ModuleLoader__.load({
         const flush = () => { if (settleTimer.current) applyNow(val) }
         const engineApplied = state && state.reserve_mib != null ? state.reserve_mib : null
         const shownApplied = applied != null ? applied : engineApplied
-        const appliedTo = shownApplied
+        const engineCache = state && state.expert_cache_mib != null ? state.expert_cache_mib : null
         const low = lowered(state)
         return h('span', {
           style: { display: 'inline-flex', alignItems: 'center', gap: 6, margin: '0 6px', position: 'relative' },
@@ -151,29 +155,33 @@ window.__ModuleLoader__.load({
             onMouseEnter: show, onMouseLeave: scheduleHide,
           },
             h('span', { style: { fontSize: '11.5px', opacity: 0.85 } },
-              `keep ${gib(val)} GiB free`,
+              `brain holds ${gib(val)} GiB of cache`,
               h('span', { style: { opacity: 0.6 } },
-                shownApplied != null ? `  ·  applied ${gib(shownApplied)} GiB` : '  ·  engine at full speed')),
+                state && state.vram_free_mib != null
+                  ? `  ·  engine reports ${gib(state.vram_free_mib)} GiB free right now`
+                  // no read yet: estimate from the cache target plus ~13 GiB of weights
+                  : `  ·  estimate: ≈ ${gib(val + 13312)} GiB used by the engine`)),
             h('input', {
-              type: 'range', min: SET_MIN, max: SET_MAX, step: SEG, value: val,
-              'aria-label': 'VRAM to keep free for other programs, in MiB',
+              type: 'range', min: CACHE_MIN, max: CACHE_MAX, step: SEG, value: val,
+              'aria-label': 'VRAM held by the agent engine cache, in MiB',
+              title: 'Right = the brain keeps more (full speed). Left = it yields VRAM to ComfyUI.',
               style: { width: '100%', accentColor: 'currentColor' },
               onChange: (e) => onSlide(Number(e.target.value)),
               onPointerUp: flush, onKeyUp: () => { if (settleTimer.current) applyNow(val) },
             }),
             h('span', { style: { display: 'flex', gap: 6, alignItems: 'center' } },
-              h('button', { type: 'button', style: pill, onClick: () => onSlide(14336) }, 'mid'),
-              h('button', { type: 'button', style: pill, onClick: () => onSlide(SET_MAX) }, 'max window'),
-              h('button', { type: 'button', style: pill, onClick: () => onSlide(SET_MIN) }, 'min'),
+              h('button', { type: 'button', style: pill, onClick: () => onSlide(CACHE_MAX) }, 'full speed'),
+              h('button', { type: 'button', style: pill, onClick: () => onSlide(8960) }, 'half'),
+              h('button', { type: 'button', style: pill, onClick: () => onSlide(CACHE_MIN) }, 'yield everything'),
               h('button', {
                 type: 'button',
                 style: { ...pill, fontWeight: 700, marginLeft: 'auto' },
-                disabled: !!busy || appliedTo === val,
+                disabled: !!busy || engineCache === val,
                 onClick: () => applyNow(val),
-              }, busy === `set ${val}` ? 'working…' : appliedTo === val ? `applied ${gib(val)} GiB` : `apply ${gib(val)} GiB`),
+              }, busy === `set ${val}` ? 'working…' : engineCache === val ? `applied ${gib(val)} GiB` : `apply ${gib(val)} GiB`),
             ),
             h('span', { style: { fontSize: '10.5px', opacity: 0.6 } },
-              'above ~20 GiB claimed the expert cache is already at its floor (≈515 experts, ≈1 GiB), so the brain reads unchanged — move it back down to give the cache room'),
+              'the cache bottoms out near 1 GiB (≈515 experts); the engine’s other ~13 GiB is model weights and no slider can move it'),
             h('span', { style: { fontSize: '11px', opacity: 0.8 } },
               state && state.expert_slots != null
                 ? `engine right now: ${state.expert_slots}/${state.expert_slots_full} experts resident · ${gb(state.expert_cache_mib || 0)} GiB cache · ${gb(state.vram_free_mib || 0)} GiB free`

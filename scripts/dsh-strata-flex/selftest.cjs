@@ -55,10 +55,10 @@ if (atRest) {
 const opened = render(true)
 const input = (opened.match(/<input[^>]*>/) || [''])[0]
 if (!/type="range"/.test(opened)) fails.push('hover state has no range input')
-for (const attr of ['min="2048"', 'max="22016"', 'step="512"']) {
+for (const attr of ['min="1024"', 'max="17920"', 'step="512"']) {
   if (!input.includes(attr)) fails.push(`range input missing ${attr} (got: ${input.slice(0, 120)})`)
 }
-for (const want of ['mid', 'max window', 'min', 'engine state unknown', 'between engine requests', 'at its floor']) {
+for (const want of ['full speed', 'half', 'yield everything', 'brain holds', 'model weights', 'engine state unknown', 'between engine requests']) {
   if (!opened.includes(want)) fails.push(`hover popover missing: ${want}`)
 }
 
@@ -67,4 +67,4 @@ if (fails.length) {
   for (const f of fails) console.error(' - ' + f)
   process.exit(1)
 }
-console.log('selftest OK — at rest: lower + reclaim + state pill; on hover: slider 2048..22016 step 512 with presets')
+console.log('selftest OK — at rest: lower + reclaim + state pill; on hover: slider 1024..17920 MiB (brain-held cache) with presets')
