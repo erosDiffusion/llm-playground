@@ -107,7 +107,12 @@ window.__ModuleLoader__.load({
           pollTimers.current = [setTimeout(load, 700), setTimeout(load, 1800)]
         }
 
-        const show = () => { if (hideTimer.current) clearTimeout(hideTimer.current); setOpen(true) }
+        const show = () => {
+          if (hideTimer.current) clearTimeout(hideTimer.current)
+          setOpen(true)
+          // Re-read on open so the popover never shows a stale picture of the engine.
+          load().then(() => undefined).catch(() => undefined)
+        }
         const scheduleHide = () => {
           if (hideTimer.current) clearTimeout(hideTimer.current)
           hideTimer.current = setTimeout(() => setOpen(false), 250)
@@ -129,11 +134,11 @@ window.__ModuleLoader__.load({
         const flush = () => { if (settleTimer.current) applyNow(val) }
         const engineApplied = state && state.reserve_mib != null ? state.reserve_mib : null
         const shownApplied = applied != null ? applied : engineApplied
+        const appliedTo = shownApplied
         const low = lowered(state)
         return h('span', {
           style: { display: 'inline-flex', alignItems: 'center', gap: 6, margin: '0 6px', position: 'relative' },
           title: 'Strata agent-engine VRAM flex (expert cache). Lower = room for local ComfyUI; reclaim = full-speed brain.',
-          onMouseEnter: show, onMouseLeave: scheduleHide, onFocus: show, onBlur: scheduleHide,
         },
           open ? h('span', {
             style: {
@@ -160,9 +165,15 @@ window.__ModuleLoader__.load({
               h('button', { type: 'button', style: pill, onClick: () => onSlide(14336) }, 'mid'),
               h('button', { type: 'button', style: pill, onClick: () => onSlide(SET_MAX) }, 'max window'),
               h('button', { type: 'button', style: pill, onClick: () => onSlide(SET_MIN) }, 'min'),
-              h('span', { style: { fontSize: '10.5px', opacity: 0.6, marginLeft: 'auto' } },
-                settling ? 'settling…' : 'applies when you stop'),
+              h('button', {
+                type: 'button',
+                style: { ...pill, fontWeight: 700, marginLeft: 'auto' },
+                disabled: !!busy || appliedTo === val,
+                onClick: () => applyNow(val),
+              }, busy === `set ${val}` ? 'working…' : appliedTo === val ? `applied ${gib(val)} GiB` : `apply ${gib(val)} GiB`),
             ),
+            h('span', { style: { fontSize: '10.5px', opacity: 0.6 } },
+              'above ~20 GiB claimed the expert cache is already at its floor (≈515 experts, ≈1 GiB), so the brain reads unchanged — move it back down to give the cache room'),
             h('span', { style: { fontSize: '11px', opacity: 0.8 } },
               state && state.expert_slots != null
                 ? `engine right now: ${state.expert_slots}/${state.expert_slots_full} experts resident · ${gb(state.expert_cache_mib || 0)} GiB cache · ${gb(state.vram_free_mib || 0)} GiB free`
@@ -170,7 +181,14 @@ window.__ModuleLoader__.load({
             h('span', { style: { fontSize: '10.5px', opacity: 0.6 } },
               'one engine call per settle · snapped to the 512 MiB segment · the resize lands between engine requests, so the numbers can take a beat'),
           ) : null,
-          h('button', { type: 'button', style: { ...pill, fontWeight: low ? 700 : 400 }, disabled: !!busy, onClick: () => act('flex') }, busy === 'flex' ? '…' : '⬇ lower brain'),
+          h('button', {
+            type: 'button',
+            style: { ...pill, fontWeight: low ? 700 : 400 },
+            disabled: !!busy,
+            title: 'Click = the usual fixed lower. Hover = choose exactly how much VRAM to claim for other programs.',
+            onMouseEnter: show, onMouseLeave: scheduleHide, onFocus: show, onBlur: scheduleHide,
+            onClick: () => { setOpen(false); act('flex') },
+          }, busy === 'flex' ? '…' : '⬇ lower brain'),
           h('button', { type: 'button', style: { ...pill, fontWeight: low ? 400 : 700 }, disabled: !!busy, onClick: () => act('reclaim') }, busy === 'reclaim' ? '…' : '⬆ reclaim'),
           h('button', { type: 'button', title: 'Click to refresh engine state', style: { ...pill, borderStyle: 'dotted', opacity: 0.6 }, onClick: () => load() }, label(state)),
           err ? h('span', { style: { fontSize: '11px', opacity: 0.75 } }, err) : null,
