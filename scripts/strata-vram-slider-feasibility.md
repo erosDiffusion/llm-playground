@@ -3,13 +3,19 @@
 Goal: turn the GUI "⬇ lower brain" fixed action into a `reserve_mib` slider.
 Verdict: already 90 % built as a workspace bundle; a small edit — no harness change.
 
+**Status 2026-11-01: BUILT.** `action: "set"` on `/api/strata-flex` plus a hover
+slider on the footer button. The route owns the guard — clamp to 2048..22016,
+snap to the engine's 512 MiB resize segment, refuse reclaim while ComfyUI reports
+a busy queue — and `dry_run: true` answers the clamped value WITHOUT touching the
+engine, which is how it was tested (verified: 40000 → 22016, 12000 → 11776,
+9000 → 9216; engine state unchanged in every dry run).
+
 ## What exists today
 
 The control is NOT in the harness: `grep` for `vram|reserve_mib|flex` over
 `deepseek-harness/{apps/web,packages}` → zero matches. What the user clicks
-is the **`dsh-strata-flex` bundle** (workspace folder), mounted live in the
-`web-lite` profile (`~/.dsh/profiles/web-lite/package.json`: `link:` dep +
-`dsh.profile.bundles` row, `"patchReload": "live"`).
+is the **`dsh-strata-flex` bundle**, mounted live in the `web-lite` profile
+(`~/.dsh/profiles/web-lite/package.json`: `link:` dep + bundles row, live reload).
 
 - Host half `dsh-strata-flex/src/index.js:80-85` registers the same-origin
   route `/api/strata-flex`; the browser never talks to the engine directly.
@@ -26,8 +32,7 @@ is the **`dsh-strata-flex` bundle** (workspace folder), mounted live in the
 
 ## Why a bundle not a harness edit
 
-The bundle rides three documented seams; DSH updates never touch workspace
-folders or `~/.dsh/profiles/`:
+The bundle rides three documented seams; updates never touch workspace dirs:
 
 - `dsh.profile.bundles` — each profile `package.json` entry resolves to its
   patch layer in order (`packages/boot/app-boot/src/profile.ts:777`,
@@ -52,8 +57,7 @@ So: slider = edit `client.js` + extend the route's action map.
 - Slider: **2048–22016 MiB, step 512** (= the engine's resize segment,
   `Strata/serve/server.py:3206-3210`). Label `keep <N/1024> GiB free` plus
   live `experts X/9645 · Y GiB free` from the response.
-- Persist the slider position in browser `localStorage`; keep patch.yml
-  values as floor/busy presets so card buttons stay one click.
+- Persist the slider in browser `localStorage`; patch.yml keeps floor/busy presets.
 - The two buttons the user wants **already exist**: ⬆ reclaim sends
   `reserve_mib:null`; probe is the dotted pill (`GET /api/strata-flex/state`).
   Only the slider + `action:"set"` are new work.
@@ -89,5 +93,4 @@ Route must enforce what the engine won't:
   local `:8188`? Make it a bundle config key.
 - Unauthenticated localhost GET on the route answered 2026-11-01 — check
   whether DSH gates `/api/*` by session token (flex already exposed today).
-- Dock space is tight: slider in the `ext-strata-flex` panel card, buttons +
-  live pill stay in the dock?
+- Dock space is tight: slider in the `ext-strata-flex` card; dock keeps buttons + pill.
