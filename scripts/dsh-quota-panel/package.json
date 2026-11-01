@@ -1,0 +1,31 @@
+{
+  "name": "dsh-quota-panel",
+  "version": "0.1.0",
+  "description": "Quota panel in the DSH Web GUI: Antigravity pool headroom with live reset clocks, Copilot premium-request totals, and a per-lane GO/NO-GO for one more job. Reads local probes only — it never spends quota to display quota.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "client.js",
+    "cordis.patch.yml",
+    "icon.svg",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}

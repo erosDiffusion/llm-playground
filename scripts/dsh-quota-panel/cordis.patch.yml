@@ -1,0 +1,25 @@
+# dsh-quota-panel — "Quota" panel in the Web GUI (sidebar entry under Projects).
+# One row does both halves: the host half (reader + /api/quota-panel route + the
+# quota_panel tool) comes from this insert, the browser half is the bundle's
+# ./client export.
+#
+# Config:
+#   agyBin        — the Antigravity CLI whose LOCAL /usage command reports pool state
+#   ledger        — Copilot premium-request ledger (written when a Copilot job runs)
+#   budgetCli     — the routing gate whose PRICE table is parsed, never copied
+#   cacheFile     — where the probe result is cached between host restarts
+#   ttlMs         — how long a probe is reused (page polls never re-probe inside it)
+#   floorFiveHour / floorWeekly — the NO-GO floors shared with acp-budget
+#   copilotHold   — self-imposed monthly premium-request hold
+- insert:
+    - id: quota-panel
+      name: dsh-quota-panel
+      config:
+        agyBin: /home/oem/.local/bin/agy
+        ledger: ~/.dsh/quota/acp-ledger.tsv
+        budgetCli: ~/.dsh/bin/acp-budget
+        cacheFile: ~/.dsh/quota/panel-cache.json
+        ttlMs: 90000
+        floorFiveHour: 20
+        floorWeekly: 25
+        copilotHold: 20
