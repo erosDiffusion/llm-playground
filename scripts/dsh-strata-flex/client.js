@@ -117,7 +117,8 @@ window.__ModuleLoader__.load({
         const flush = () => { if (settleTimer.current) applyNow(val) }
         const engineApplied = state && state.reserve_mib != null ? state.reserve_mib : null
         const shownApplied = applied != null ? applied : engineApplied
-        h('span', {
+        const low = lowered(state)
+        return h('span', {
           style: { display: 'inline-flex', alignItems: 'center', gap: 6, margin: '0 6px', position: 'relative' },
           title: 'Strata agent-engine VRAM flex (expert cache). Lower = room for local ComfyUI; reclaim = full-speed brain.',
           onMouseEnter: show, onMouseLeave: scheduleHide, onFocus: show, onBlur: scheduleHide,
