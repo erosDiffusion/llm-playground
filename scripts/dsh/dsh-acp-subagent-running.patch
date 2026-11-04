@@ -1,0 +1,89 @@
+diff --git a/packages/api/session-controller/src/index.ts b/packages/api/session-controller/src/index.ts
+index 2362bce21c..6df9cf7456 100644
+--- a/packages/api/session-controller/src/index.ts
++++ b/packages/api/session-controller/src/index.ts
+@@ -204,6 +204,11 @@ export class SessionController extends TypertRemoteService {
+     ctx.on('agent/status', ({ agent, status }) => {
+       ctx.emit('api-session/status', agent.id, status === 'running')
+     })
++    // Local patch (dsh-acp-subagent-running.patch): provider-backed subagent
++    // children have no in-process Agent, so `agent/status` never covers them.
++    ctx.on('subagent/run-status', ({ sessionId, running }) => {
++      ctx.emit('api-session/status', sessionId, running)
++    })
+     ctx.on('agent/error', ({ agent, error }) => {
+       ctx.emit('api-session/error', agent.id, errorChain(error))
+     })
+diff --git a/packages/api/session-controller/src/remote-events.ts b/packages/api/session-controller/src/remote-events.ts
+index f9112e9e1f..8ae0116271 100644
+--- a/packages/api/session-controller/src/remote-events.ts
++++ b/packages/api/session-controller/src/remote-events.ts
+@@ -1,4 +1,6 @@
+ /** Session Controller events available to a Remote Event assembly. */
++import type { SessionId } from '@deepseek-ai/dsh-session'
++
+ type SessionControllerRemoteEvent =
+   | 'api-session/activity'
+   | 'api-session/added'
+@@ -11,4 +13,15 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
+     Record<SessionControllerRemoteEvent, true> {}
+ }
+ 
++// Local patch (kit: ~/.dsh/patches/dsh-acp-subagent-running.patch, dev doc
++// ~/.dsh/docs/dsh-acp-subagent-running.md). Mirrors the `subagent` package's own
++// declaration so this package can relay it without depending on that package.
++// Drop this block if upstream ever reports provider-backed children as running.
++declare module '@deepseek-ai/cordis' {
++  interface Events {
++    /** An out-of-process (provider-backed) subagent run started or settled. */
++    'subagent/run-status'(payload: { sessionId: SessionId; running: boolean }): void
++  }
++}
++
+ export {}
+diff --git a/packages/subagent/subagent/src/index.ts b/packages/subagent/subagent/src/index.ts
+index 119cc26a6a..86beaf2ea0 100644
+--- a/packages/subagent/subagent/src/index.ts
++++ b/packages/subagent/subagent/src/index.ts
+@@ -140,6 +140,17 @@ declare module '@deepseek-ai/cordis' {
+      * @mode emit
+      */
+     'subagent/provider-added'(provider: SubagentProvider): void
++    /**
++     * An out-of-process (provider-backed) child run became active or settled.
++     * Such a child owns a session but no in-process Agent, so the Agent
++     * lifecycle never reports it and the GUI keeps an idle dot for work that is
++     * actually running. Local children are excluded by the emitter: they already
++     * publish through `agent/status`.
++     * @param payload.sessionId - the child session the run belongs to.
++     * @param payload.running - true once the run starts, false once it settles.
++     * @mode emit
++     */
++    'subagent/run-status'(payload: { sessionId: SessionId; running: boolean }): void
+     /**
+      * A provider left the registry. Accepted runs remain holder-owned.
+      * @param name - the provider name that no longer resolves.
+diff --git a/packages/subagent/subagent/src/manager.ts b/packages/subagent/subagent/src/manager.ts
+index b89732c29e..0c0c61e1bd 100644
+--- a/packages/subagent/subagent/src/manager.ts
++++ b/packages/subagent/subagent/src/manager.ts
+@@ -871,6 +871,19 @@ export class SubagentManager {
+           await run.dispose()
+           throw error
+         }
++        // A provider-backed child owns a session but no in-process Agent, so the
++        // Agent lifecycle never reports it busy and the GUI shows an idle dot for
++        // work that is running. Pairing is carried by the run's own settlement, so
++        // a failure anywhere after this point cannot leave a stale "running".
++        // The light is strictly best-effort: emitting during teardown must never
++        // become an unhandled rejection nor change how the run settles.
++        const reportRunning = (running: boolean): void => {
++          try { this.ctx.emit('subagent/run-status', { sessionId: childId, running }) }
++          catch { /* the run's own result is the authority; this is only a light */ }
++        }
++        reportRunning(true)
++        void run.result.then(() => reportRunning(false), () => reportRunning(false))
++          .catch(() => undefined)
+       } finally {
+         inputs.signal.removeEventListener('abort', cancelStartup)
+       }
