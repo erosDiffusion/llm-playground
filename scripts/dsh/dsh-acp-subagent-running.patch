@@ -1,8 +1,8 @@
 diff --git a/packages/api/session-controller/src/index.ts b/packages/api/session-controller/src/index.ts
-index 2362bce21c..2813832558 100644
+index 8e81986f0b..af19fbb498 100644
 --- a/packages/api/session-controller/src/index.ts
 +++ b/packages/api/session-controller/src/index.ts
-@@ -204,6 +204,11 @@ export class SessionController extends TypertRemoteService {
+@@ -234,6 +234,11 @@ export class SessionController extends TypertRemoteService {
      ctx.on('agent/status', ({ agent, status }) => {
        ctx.emit('api-session/status', agent.id, status === 'running')
      })
@@ -14,9 +14,9 @@ index 2362bce21c..2813832558 100644
      ctx.on('agent/error', ({ agent, error }) => {
        ctx.emit('api-session/error', agent.id, errorChain(error))
      })
-@@ -620,3 +625,16 @@ export class SessionController extends TypertRemoteService {
+@@ -646,3 +651,16 @@ export class SessionController extends TypertRemoteService {
+ }
  
- export { buildModelCatalog }
  export default SessionController
 +
 +// Local patch (dsh-acp-subagent-running.patch): mirrors the declaration in
@@ -32,7 +32,7 @@ index 2362bce21c..2813832558 100644
 +  }
 +}
 diff --git a/packages/subagent/subagent/src/index.ts b/packages/subagent/subagent/src/index.ts
-index 119cc26a6a..86beaf2ea0 100644
+index fd30901a6c..4f63005307 100644
 --- a/packages/subagent/subagent/src/index.ts
 +++ b/packages/subagent/subagent/src/index.ts
 @@ -140,6 +140,17 @@ declare module '@deepseek-ai/cordis' {
@@ -54,7 +54,7 @@ index 119cc26a6a..86beaf2ea0 100644
       * A provider left the registry. Accepted runs remain holder-owned.
       * @param name - the provider name that no longer resolves.
 diff --git a/packages/subagent/subagent/src/manager.ts b/packages/subagent/subagent/src/manager.ts
-index b89732c29e..0c0c61e1bd 100644
+index aa28ddd557..73b2b28419 100644
 --- a/packages/subagent/subagent/src/manager.ts
 +++ b/packages/subagent/subagent/src/manager.ts
 @@ -871,6 +871,19 @@ export class SubagentManager {

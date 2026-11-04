@@ -1,8 +1,8 @@
 diff --git a/packages/client/ui-conversation/src/client/apply.ts b/packages/client/ui-conversation/src/client/apply.ts
-index e567bd1a50..0e68dc9b28 100644
+index 3328e1e5da..e4c756254e 100644
 --- a/packages/client/ui-conversation/src/client/apply.ts
 +++ b/packages/client/ui-conversation/src/client/apply.ts
-@@ -469,9 +469,11 @@ export function apply(ctx: Context, config: Config = Config({})): void {
+@@ -483,9 +483,11 @@ export function apply(ctx: Context, config: Config = Config({})): void {
            retryFileUpload: undefined,
            toggleCommandMenu: undefined,
            stop: undefined,
@@ -14,7 +14,7 @@ index e567bd1a50..0e68dc9b28 100644
              fileUploads: ABSENT_FILE_UPLOADS,
              notices: ABSENT_NOTICES,
              lexicon: ABSENT_LEXICON,
-@@ -545,9 +547,11 @@ export function apply(ctx: Context, config: Config = Config({})): void {
+@@ -562,9 +564,11 @@ export function apply(ctx: Context, config: Config = Config({})): void {
              })
            },
          stop: () => { stop(sessionId) },
@@ -26,7 +26,7 @@ index e567bd1a50..0e68dc9b28 100644
            fileUploads: conversation.fileUploads,
            notices: shell.notices,
            lexicon: shell.lexicon,
-@@ -575,6 +579,7 @@ export function apply(ctx: Context, config: Config = Config({})): void {
+@@ -592,6 +596,7 @@ export function apply(ctx: Context, config: Config = Config({})): void {
      input: inputHub,
      blocks: composerBlocks,
      maxConcurrentFileUploads,
@@ -35,10 +35,10 @@ index e567bd1a50..0e68dc9b28 100644
    ctx.plugin(todoDockEntry)
    ctx.plugin(queueDockEntry)
 diff --git a/packages/client/ui-conversation/src/client/contract/slots.ts b/packages/client/ui-conversation/src/client/contract/slots.ts
-index a02f5aa662..4c24a9a82f 100644
+index 0c438e0f4c..2d6f50eebc 100644
 --- a/packages/client/ui-conversation/src/client/contract/slots.ts
 +++ b/packages/client/ui-conversation/src/client/contract/slots.ts
-@@ -466,6 +466,8 @@ export interface ComposerBarInjected {
+@@ -565,6 +565,8 @@ export interface ComposerBarInjected {
    retryFileUpload: ((id: DraftAttachmentId) => void) | undefined
    toggleCommandMenu: ((selection: EditSelection) => void) | undefined
    stop: (() => void) | undefined
@@ -47,13 +47,13 @@ index a02f5aa662..4c24a9a82f 100644
    hooks: {
      /** Readable sequence while the fixed Stop command is registered. */
      stopShortcut: ObservableSnapshot<readonly string[]>
-@@ -474,6 +476,8 @@ export interface ComposerBarInjected {
+@@ -573,6 +575,8 @@ export interface ComposerBarInjected {
       * and the primary Send button use while the addressed agent is busy.
       */
      busyEnter: ObservableSnapshot<BusyEnterBehavior>
 +    /** Live pending-queue merge preference for the composer's merge switch. */
 +    mergePending: ObservableSnapshot<boolean>
-     /** Live per-draft upload states for file-kind drafts. */
+     /** Live per-draft upload states for drafts that upload when added. */
      fileUploads: ObservableSnapshot<DraftFileUploads>
      notices: ObservableSnapshot<InputNotice | null>
 diff --git a/packages/client/ui-conversation/src/client/input/submission-policy.ts b/packages/client/ui-conversation/src/client/input/submission-policy.ts
@@ -118,27 +118,75 @@ index 409f6d0493..41b872ceb7 100644
    }
  }
 diff --git a/packages/client/ui-conversation/src/client/locales.ts b/packages/client/ui-conversation/src/client/locales.ts
-index f1f708073b..38048c6e72 100644
+index 2918c177a0..54c4f654de 100644
 --- a/packages/client/ui-conversation/src/client/locales.ts
 +++ b/packages/client/ui-conversation/src/client/locales.ts
-@@ -28,6 +28,7 @@ export const zh = {
-   'input.stop': '停止生成',
+@@ -30,6 +30,7 @@ export const zh = {
    'input.send': '发送消息',
+   'input.sending': '正在发送消息',
    'input.send.queue': '排队发送',
 +  'input.mergePending': '合并排队消息',
    'input.send.steer': '插话发送',
    'attachment.pending': '待发送附件',
    'attachment.scrollLeft': '向左滚动附件',
-@@ -408,6 +409,7 @@ export const en = {
-   'input.stop': 'Stop generating',
+@@ -420,6 +421,7 @@ export const en = {
    'input.send': 'Send message',
+   'input.sending': 'Sending message',
    'input.send.queue': 'Queue message',
 +  'input.mergePending': 'Merge queued messages',
    'input.send.steer': 'Steer message',
    'attachment.pending': 'Pending attachments',
    'attachment.scrollLeft': 'Scroll attachments left',
+@@ -810,6 +812,7 @@ export const ja = {
+   'input.sending': 'メッセージを送信中',
+   'input.send.queue': 'メッセージをキューに追加',
+   'input.send.steer': '実行中の指示にメッセージを追加',
++  'input.mergePending': 'キューに入ったメッセージをマージ',
+   'attachment.pending': '保留中の添付ファイル',
+   'attachment.scrollLeft': '添付ファイルを左にスクロール',
+   'attachment.scrollRight': '添付ファイルを右にスクロール',
+@@ -1197,6 +1200,7 @@ export const es = {
+   'input.sending': 'Enviando mensaje',
+   'input.send.queue': 'mensaje de cola',
+   'input.send.steer': 'Redirigir mensaje',
++  'input.mergePending': 'Fusionar mensajes en cola',
+   'attachment.pending': 'Anexos pendientes',
+   'attachment.scrollLeft': 'Desplazar archivos adjuntos hacia la izquierda',
+   'attachment.scrollRight': 'Desplazar archivos adjuntos hacia la derecha',
+@@ -1586,6 +1590,7 @@ export const fr = {
+   'input.sending': 'Envoi du message',
+   'input.send.queue': "Message de file d'attente",
+   'input.send.steer': 'Guider avec ce message',
++  'input.mergePending': "Fusionner les messages en file d'attente",
+   'attachment.pending': 'Pièces jointes en attente',
+   'attachment.scrollLeft': 'Faire défiler les pièces jointes vers la gauche',
+   'attachment.scrollRight': 'Faire défiler les pièces jointes vers la droite',
+@@ -1975,6 +1980,7 @@ export const de = {
+   'input.sending': 'Nachricht wird gesendet',
+   'input.send.queue': 'Warteschlangennachricht',
+   'input.send.steer': 'Mit Nachricht lenken',
++  'input.mergePending': 'In der Warteschlange befindliche Nachrichten zusammenführen',
+   'attachment.pending': 'Ausstehende Anhänge',
+   'attachment.scrollLeft': 'Anhänge nach links scrollen',
+   'attachment.scrollRight': 'Anhänge nach rechts scrollen',
+@@ -2364,6 +2370,7 @@ export const ru = {
+   'input.sending': 'Отправка сообщения',
+   'input.send.queue': 'Сообщение в очереди',
+   'input.send.steer': 'Направить сообщение',
++  'input.mergePending': 'Объединить сообщения в очереди',
+   'attachment.pending': 'Ожидающие вложения',
+   'attachment.scrollLeft': 'Прокрутить вложения влево',
+   'attachment.scrollRight': 'Прокрутить вложения вправо',
+@@ -2753,6 +2760,7 @@ export const pt = {
+   'input.sending': 'Enviando mensagem',
+   'input.send.queue': 'Mensagem de fila',
+   'input.send.steer': 'Orientar com mensagem',
++  'input.mergePending': 'Mesclar mensagens na fila',
+   'attachment.pending': 'Anexos pendentes',
+   'attachment.scrollLeft': 'Rolar anexos para a esquerda',
+   'attachment.scrollRight': 'Rolar os anexos para a direita',
 diff --git a/packages/client/ui-conversation/src/client/service.ts b/packages/client/ui-conversation/src/client/service.ts
-index fc76701be6..18bc546f81 100644
+index af19eb7721..9ac5a0f6a2 100644
 --- a/packages/client/ui-conversation/src/client/service.ts
 +++ b/packages/client/ui-conversation/src/client/service.ts
 @@ -31,6 +31,22 @@ import type {
@@ -193,9 +241,9 @@ index fc76701be6..18bc546f81 100644
      ctx.effect(() => async () => {
        const operations = [...this.fileUploadOperations.values()]
        for (const operation of operations) operation.controller.abort()
-@@ -261,6 +281,16 @@ export class ConversationController extends Service implements IConversation {
-         ? { type: 'image' as const, ...await this.encodeImage(attachment.file) }
-         : { type: 'file' as const, receiptId: uploadFor(attachment).receiptId }),
+@@ -277,6 +297,16 @@ export class ConversationController extends Service implements IConversation {
+           : { type: 'file' as const, receiptId }
+       }),
      )
 +    // Merge-into-pending: a queue-mode text-only send while a queued row is
 +    // still pending grows the newest row instead of adding a separate turn.
@@ -207,10 +255,10 @@ index fc76701be6..18bc546f81 100644
 +      const merged = await this.mergeIntoQueue(session, text)
 +      if (merged !== undefined) return merged
 +    }
-     let finishRetirement: ((retirement: PendingSubmissionRetirement) => void) | undefined
-     const retirement = attachments.length === 0
-       ? undefined
-@@ -289,6 +319,40 @@ export class ConversationController extends Service implements IConversation {
+     // The composer owns the attachments until the Host accepts the prompt.
+     const ownership = { accepted: false, retiredUnobserved: false }
+     const acceptance = Promise.withResolvers<undefined>()
+@@ -314,6 +344,40 @@ export class ConversationController extends Service implements IConversation {
      return { kind: 'success' }
    }
  
@@ -250,12 +298,12 @@ index fc76701be6..18bc546f81 100644
 +
    /**
     * Create runtime-only draft attachments. Files whose browser MIME is an
-    * accepted image type become image drafts (object URL preview, bytes sent
+    * accepted image type become image drafts with an object URL preview; every
 diff --git a/packages/client/ui-conversation/src/client/skeleton/InputBar.module.css b/packages/client/ui-conversation/src/client/skeleton/InputBar.module.css
-index 123a0fcbea..ed10dfa963 100644
+index b3cd1dd271..79ddaf7231 100644
 --- a/packages/client/ui-conversation/src/client/skeleton/InputBar.module.css
 +++ b/packages/client/ui-conversation/src/client/skeleton/InputBar.module.css
-@@ -339,6 +339,43 @@
+@@ -358,6 +358,47 @@
    cursor: default;
  }
  
@@ -277,9 +325,11 @@ index 123a0fcbea..ed10dfa963 100644
 +  transition: background-color 100ms ease, color 100ms ease;
 +}
 +
-+.merge:hover:not(:disabled) {
-+  background: var(--dsw-alias-interactive-bg-hover-solid);
-+  color: var(--dsw-alias-label-primary);
++@media (hover: hover) {
++  .merge:hover:not(:disabled) {
++    background: var(--dsw-alias-interactive-bg-hover-solid);
++    color: var(--dsw-alias-label-primary);
++  }
 +}
 +
 +.merge:disabled {
@@ -292,15 +342,17 @@ index 123a0fcbea..ed10dfa963 100644
 +  color: var(--dsw-alias-state-business-primary);
 +}
 +
-+.mergeOn:hover:not(:disabled) {
-+  background: var(--dsw-alias-interactive-bg-hover-solid);
++@media (hover: hover) {
++  .mergeOn:hover:not(:disabled) {
++    background: var(--dsw-alias-interactive-bg-hover-solid);
++  }
 +}
 +
  /* Plan / Read-only / model — native <select>, chip-like closed chrome
     (figma ToggleButton: 13/20 medium secondary, 12px chevron). */
  .select {
 diff --git a/packages/client/ui-conversation/src/client/skeleton/InputBar.tsx b/packages/client/ui-conversation/src/client/skeleton/InputBar.tsx
-index ef95796577..3a6255adcb 100644
+index 892a410223..392abdc1db 100644
 --- a/packages/client/ui-conversation/src/client/skeleton/InputBar.tsx
 +++ b/packages/client/ui-conversation/src/client/skeleton/InputBar.tsx
 @@ -46,8 +46,8 @@ export type InputBarProps = ComposerBarProps
@@ -311,13 +363,13 @@ index ef95796577..3a6255adcb 100644
 -  renderSlot, useBusyEnter, useFileUploads, useNotices, useLexicon, useMenuLauncher, useStopShortcut,
 +  toggleCommandMenu, stop, setMergePending, t,
 +  renderSlot, useBusyEnter, useMergePending, useFileUploads, useNotices, useLexicon, useMenuLauncher, useStopShortcut,
+   useAccess,
    useProjection, sessionId, variant, disabled: inert = false, blocked,
    workspacePickerOpen = false, onRequestWorkspace,
-   placeholder, accessory,
-@@ -56,6 +56,10 @@ export const InputBar = memo(function InputBar({
-   const notice = useNotices(s => s)
-   const busyEnter = useBusyEnter(s => s)
-   const stopKeys = useStopShortcut(keys => keys)
+@@ -64,6 +64,10 @@ export const InputBar = memo(function InputBar({
+   const cancelDenied = useAccess('session/cancel') === false
+   const uploadDenied = useAccess('fileUploads/upload') === false
+   const stopAction = cancelDenied ? undefined : stop
 +  // Pending-queue merge preference: queue-mode sends grow the newest queued
 +  // row instead of adding turns (the service owns the merge decision; the
 +  // switch only sets and displays the live value).
@@ -325,12 +377,12 @@ index ef95796577..3a6255adcb 100644
    void useLexicon // hook seat stays bound by the inject compartment; text-ref decoration rides the shell's editor transforms
    const commandMenuOpen = useMenuLauncher(source => source === 'command')
    const [activity, setActivity] = useState(false)
-@@ -475,6 +479,25 @@ export const InputBar = memo(function InputBar({
+@@ -520,6 +524,25 @@ export const InputBar = memo(function InputBar({
                  : renderSlot('conversation.input.right', {})}
                {sessionId === undefined ? null : renderSlot('conversation.input.model', { locked: modelSeatLocked })}
              </div>
 +            {input === undefined || sessionId === undefined ? null : (
-+              <Tooltip label={t('input.mergePending')} side="top" delayMs={500}>
++              <Tooltip label={t('input.mergePending')} side="top" delayMs={500} portal>
 +                <button
 +                  type="button"
 +                  className={mergePending ? clsx(css.merge, css.mergeOn) : css.merge}
@@ -427,7 +479,7 @@ index 2b95435480..c0d61a39b0 100644
  
  /** Schema for shared configuration values. */
 diff --git a/packages/client/ui-conversation/tests/config.host.spec.ts b/packages/client/ui-conversation/tests/config.host.spec.ts
-index cb047da964..7d3fbfb9ba 100644
+index 7b87d23d59..79478dd420 100644
 --- a/packages/client/ui-conversation/tests/config.host.spec.ts
 +++ b/packages/client/ui-conversation/tests/config.host.spec.ts
 @@ -4,7 +4,7 @@ import * as HostPlugin from '../src/index.ts'
@@ -443,24 +495,24 @@ index cb047da964..7d3fbfb9ba 100644
      const ctx = new Context()
      const configuration = await liveConfig(ctx, { Config, apply })
      const { fiber } = configuration
--    expect(plainConfig(configuration.fiber.config)).toEqual({ busyEnter: DEFAULT_BUSY_ENTER_BEHAVIOR })
-+    expect(plainConfig(configuration.fiber.config)).toEqual({
+-    expect(plainConfig(configuration.fiber.effectiveConfig)).toEqual({ busyEnter: DEFAULT_BUSY_ENTER_BEHAVIOR })
++    expect(plainConfig(configuration.fiber.effectiveConfig)).toEqual({
 +      busyEnter: DEFAULT_BUSY_ENTER_BEHAVIOR, mergePending: DEFAULT_MERGE_PENDING,
 +    })
      await configuration.update({ busyEnter: 'steer' })
--    expect(plainConfig(configuration.fiber.config)).toEqual({ busyEnter: 'steer' })
-+    expect(plainConfig(configuration.fiber.config)).toEqual({ busyEnter: 'steer', mergePending: DEFAULT_MERGE_PENDING })
+-    expect(plainConfig(configuration.fiber.effectiveConfig)).toEqual({ busyEnter: 'steer' })
++    expect(plainConfig(configuration.fiber.effectiveConfig)).toEqual({ busyEnter: 'steer', mergePending: DEFAULT_MERGE_PENDING })
 +    await configuration.update({ mergePending: false })
-+    expect(plainConfig(configuration.fiber.config)).toEqual({ busyEnter: 'steer', mergePending: false })
++    expect(plainConfig(configuration.fiber.effectiveConfig)).toEqual({ busyEnter: 'steer', mergePending: false })
 +    await expect(configuration.update({ mergePending: 'nope' })).rejects.toThrow()
      await expect(configuration.update({ busyEnter: 'invalid' })).rejects.toThrow()
      await fiber.dispose()
    })
 diff --git a/packages/client/ui-conversation/tests/input-bar.client.spec.tsx b/packages/client/ui-conversation/tests/input-bar.client.spec.tsx
-index 4ee04fe8a7..1b0d797ffb 100644
+index bf3f83e133..71a5a7c9f8 100644
 --- a/packages/client/ui-conversation/tests/input-bar.client.spec.tsx
 +++ b/packages/client/ui-conversation/tests/input-bar.client.spec.tsx
-@@ -108,6 +108,8 @@ interface BenchOptions {
+@@ -112,6 +112,8 @@ interface BenchOptions {
    addFiles?: (files: readonly File[], directories?: ReadonlySet<File>) => string | null
    commandMenuOpen?: boolean
    busyEnter?: 'queue' | 'steer'
@@ -469,7 +521,7 @@ index 4ee04fe8a7..1b0d797ffb 100644
    toggleCommandMenu?: (selection: { start: number; end: number }) => void
  }
  
-@@ -162,6 +164,8 @@ function bench(over?: BenchOptions) {
+@@ -166,6 +168,8 @@ function bench(over?: BenchOptions) {
    const menuLauncher = createSnapshotStore<string | null>(over?.commandMenuOpen === true ? 'command' : null)
    const busyEnter = createSnapshotStore<'queue' | 'steer'>(over?.busyEnter ?? 'queue')
    const stopShortcut = createSnapshotStore<readonly string[]>(['Esc', 'Esc'])
@@ -478,7 +530,7 @@ index 4ee04fe8a7..1b0d797ffb 100644
    const slotCalls: { key: string; owner: unknown }[] = []
    const renderSlot = ((key: string, owner: object) => {
      slotCalls.push({ key, owner })
-@@ -212,6 +216,8 @@ function bench(over?: BenchOptions) {
+@@ -218,6 +222,8 @@ function bench(over?: BenchOptions) {
      toggleCommandMenu: over?.toggleCommandMenu ?? vi.fn(),
      useBusyEnter: bindSnapshotSelector(busyEnter),
      useStopShortcut: bindSnapshotSelector(stopShortcut),
@@ -487,7 +539,7 @@ index 4ee04fe8a7..1b0d797ffb 100644
      useNotices: bindSnapshotSelector(shell.notices),
      useLexicon: bindSnapshotSelector(shell.lexicon),
      useMenuLauncher: bindSnapshotSelector(menuLauncher),
-@@ -254,7 +260,7 @@ function bench(over?: BenchOptions) {
+@@ -261,7 +267,7 @@ function bench(over?: BenchOptions) {
    const interruptButton = view.container.querySelector<HTMLButtonElement>('button[aria-label="停止生成"]')
    return {
      view, textarea, button, interruptButton, props, sink, shell, wiring: shell, session, stop, removeAttachment, slotCalls,
@@ -496,7 +548,7 @@ index 4ee04fe8a7..1b0d797ffb 100644
      steerQueue: over?.steerQueue,
      get placeholder() { return placeholderOf(view.container) },
      get inputDisabled() { return textarea.getAttribute('aria-disabled') === 'true' },
-@@ -1913,3 +1919,33 @@ it('places context usage below the composer and hides it until the activity clos
+@@ -2211,3 +2217,33 @@ it('places context usage below the composer and hides it until the activity clos
    expect(view.getByRole('dialog', { name: '上下文已用' })).toBeTruthy()
    expect(view.getByRole('button', { name: '发送消息' })).toBeTruthy()
  })
@@ -531,10 +583,10 @@ index 4ee04fe8a7..1b0d797ffb 100644
 +
 +})
 diff --git a/packages/client/ui-conversation/tests/input-matrix.client.spec.tsx b/packages/client/ui-conversation/tests/input-matrix.client.spec.tsx
-index 16e468dccb..028dd860e8 100644
+index 517848498a..13c1760b3d 100644
 --- a/packages/client/ui-conversation/tests/input-matrix.client.spec.tsx
 +++ b/packages/client/ui-conversation/tests/input-matrix.client.spec.tsx
-@@ -85,6 +85,8 @@ function mountBar(shell: SessionInputShell, over?: { running?: boolean; disabled
+@@ -87,6 +87,8 @@ function mountBar(shell: SessionInputShell, over?: { running?: boolean; disabled
      toggleCommandMenu: vi.fn(),
      useBusyEnter: bindSnapshotSelector(createSnapshotStore<'queue' | 'steer'>('queue')),
      useStopShortcut: bindSnapshotSelector(createSnapshotStore<readonly string[]>([])),
@@ -544,10 +596,10 @@ index 16e468dccb..028dd860e8 100644
      useLexicon: bindSnapshotSelector(shell.lexicon),
      useMenuLauncher: bindSnapshotSelector(createSnapshotStore<string | null>(null)),
 diff --git a/packages/client/ui-conversation/tests/input-scenarios.client.spec.tsx b/packages/client/ui-conversation/tests/input-scenarios.client.spec.tsx
-index 5a0f2d6fba..92fa28fc10 100644
+index 2129c605d2..843143da4c 100644
 --- a/packages/client/ui-conversation/tests/input-scenarios.client.spec.tsx
 +++ b/packages/client/ui-conversation/tests/input-scenarios.client.spec.tsx
-@@ -185,6 +185,8 @@ async function scopedBench(register?: (inputTriggers: InputTriggerService) => vo
+@@ -187,6 +187,8 @@ async function scopedBench(register?: (inputTriggers: InputTriggerService) => vo
        previewUrl: `blob:${id}`,
      })),
      useBusyEnter: bindSnapshotSelector(createSnapshotStore<'queue' | 'steer'>('queue')),
@@ -557,19 +609,19 @@ index 5a0f2d6fba..92fa28fc10 100644
        const snapshot = shell.snapshot
        controller.toggleSource('command', {
 diff --git a/packages/client/ui-conversation/tests/service-orchestration.client.spec.ts b/packages/client/ui-conversation/tests/service-orchestration.client.spec.ts
-index d784e37b90..bccbc5736b 100644
+index 92541cc3ba..347cc87b25 100644
 --- a/packages/client/ui-conversation/tests/service-orchestration.client.spec.ts
 +++ b/packages/client/ui-conversation/tests/service-orchestration.client.spec.ts
-@@ -17,7 +17,7 @@ import { InputHub } from '../src/client/input/hub.ts'
- import { ConversationController } from '../src/client/service.ts'
- import { zh } from '../src/client/locales.ts'
+@@ -31,7 +31,7 @@ const UPLOAD_IMAGES = true
+ /** `createDrafts` mode of a draft whose images travel inline, as a subagent continuation's do. */
+ const INLINE_IMAGES = false
  
 -async function bench(maxConcurrentFileUploads = 2) {
 +async function bench(maxConcurrentFileUploads = 2, mergePending = true) {
    const runtime = await SlotTestRuntime.create()
    runtime.fileUpload.upload = (sessionId: SessionId, ...args: unknown[]) => {
      const session = runtime.sessions.behavior(sessionId) as {
-@@ -45,6 +45,7 @@ async function bench(maxConcurrentFileUploads = 2) {
+@@ -66,6 +66,7 @@ async function bench(maxConcurrentFileUploads = 2) {
      input: hub,
      blocks: new ComposerBlockRegistry(),
      maxConcurrentFileUploads,
@@ -577,7 +629,7 @@ index d784e37b90..bccbc5736b 100644
    })
    await fiber.await()
    const root = runtime.ctx.get('conversation') as ConversationController
-@@ -480,6 +481,7 @@ describe('ConversationController', () => {
+@@ -604,6 +605,7 @@ describe('ConversationController', () => {
        input: new InputHub(bare, makeTranslate(zh, {})),
        blocks: new ComposerBlockRegistry(),
        maxConcurrentFileUploads: 2,
@@ -585,9 +637,9 @@ index d784e37b90..bccbc5736b 100644
      }).await()
      const orphan = bare.get('conversation') as ConversationController
      await expect(orphan.send('x')).rejects.toThrow(/sessions service unavailable/)
-@@ -915,3 +917,96 @@ it.each([
-     expect(track).toHaveBeenCalledExactlyOnceWith('send_button_click', { run_mode: 'default', msg_type: expected }, expect.any(Number))
-   } finally { await b.runtime.dispose() }
+@@ -1195,3 +1197,96 @@ it('reports nothing for a submission whose Session facts were not captured', ()
+   reportMessageSubmission(ctx, { timestamp: 1, mode: 'queue', source: 'click' })
+   expect(track).not.toHaveBeenCalled()
  })
 +
 +describe('sendSession pending-queue merge (mergePending)', () => {
@@ -683,10 +735,10 @@ index d784e37b90..bccbc5736b 100644
 +  })
 +})
 diff --git a/packages/client/ui-conversation/tests/skeleton.client.spec.tsx b/packages/client/ui-conversation/tests/skeleton.client.spec.tsx
-index bcd1005a30..3da645ea38 100644
+index 8eb125df03..7e8e1a82b4 100644
 --- a/packages/client/ui-conversation/tests/skeleton.client.spec.tsx
 +++ b/packages/client/ui-conversation/tests/skeleton.client.spec.tsx
-@@ -294,6 +294,8 @@ function mount(
+@@ -311,6 +311,8 @@ function mount(
            toggleCommandMenu={vi.fn()}
            useBusyEnter={bindSnapshotSelector(createSnapshotStore<'queue' | 'steer'>('queue'))}
            useStopShortcut={bindSnapshotSelector(createSnapshotStore<readonly string[]>([]))}

@@ -1,21 +1,21 @@
 diff --git a/packages/client/ui-primitives/src/markdown/render.tsx b/packages/client/ui-primitives/src/markdown/render.tsx
-index cdb9afcbda..e4dc0c2140 100644
+index 3267902a4b..e38d3f6bdb 100644
 --- a/packages/client/ui-primitives/src/markdown/render.tsx
 +++ b/packages/client/ui-primitives/src/markdown/render.tsx
 @@ -6,8 +6,10 @@
   *
-  * External link and image destinations pass a protocol allowlist; settled
+  * External links reject executable and embedded-document protocols; settled
   * local file links use an explicit owner callback. Images additionally require
 - * absolute HTTP(S), raw HTML renders as literal text (no HTML enters the
-- * DOM), and KaTeX runs without trusted commands. Fragment-anchor URLs fail
+- * DOM), and KaTeX runs without trusted commands. Fragment-only URLs are not
 + * absolute HTTP(S) — except image URLs whose path ends in a known video
 + * extension (.mp4/.webm/.ogv), which render as a controls-enabled <video>
 + * with the same allowlist — raw HTML renders as literal text (no HTML enters
-+ * the DOM), and KaTeX runs without trusted commands. Fragment-anchor URLs fail
-  * the allowlist, so footnote references and back-references render as plain
++ * the DOM), and KaTeX runs without trusted commands. Fragment-only URLs are not
+  * absolute, so footnote references and back-references render as plain
   * text rather than in-page links.
   *
-@@ -91,11 +93,27 @@ function vocabularyImageUrl(url: string): string | undefined {
+@@ -100,11 +102,27 @@ function vocabularyImageUrl(url: string): string | undefined {
    }
  }
  
@@ -44,8 +44,8 @@ index cdb9afcbda..e4dc0c2140 100644
 + * the caller.
   * @param url - The authored markdown destination.
   * @param pathImages - Rewriting vocabulary, when the render pass has one.
-  * @returns The displayable image URL, or undefined.
-@@ -623,6 +641,22 @@ function inlineCodeHttpUrl(value: string): string | undefined {
+  * @param load - The mounted image's load number for rewritten URLs.
+@@ -671,6 +689,22 @@ function inlineCodeHttpUrl(value: string): string | undefined {
  }
  
  function renderImage(url: string, alt: string, key: Key, context: MarkdownRenderContext): ReactNode {
@@ -69,10 +69,10 @@ index cdb9afcbda..e4dc0c2140 100644
      pathImages={context.pathImages} streaming={context.streaming} inLink={context.inLink === true} />
  }
 diff --git a/packages/client/ui-primitives/tests/markdown.client.spec.tsx b/packages/client/ui-primitives/tests/markdown.client.spec.tsx
-index c655a007d2..d0c70494ef 100644
+index 13db7b9302..e886c16d51 100644
 --- a/packages/client/ui-primitives/tests/markdown.client.spec.tsx
 +++ b/packages/client/ui-primitives/tests/markdown.client.spec.tsx
-@@ -332,6 +332,37 @@ describe('MarkdownText', () => {
+@@ -342,6 +342,37 @@ describe('MarkdownText', () => {
      }
    })
  
@@ -107,6 +107,6 @@ index c655a007d2..d0c70494ef 100644
 +    expect(container.querySelector('img')).toBeNull()
 +  })
 +
-   it('neutralizes raw HTML, unsafe or relative links, and unsupported images', () => {
-     const markdown = [
-       '<script>globalThis.compromised = true</script>',
+   it('omits raw HTML when asked, in settled and streaming renders, and rebuilds the stream when the choice changes', () => {
+     const text = 'Before <b>bold</b> after\n\n<div align="center">block</div>\n\nTail'
+     const view = render(<MarkdownText text={text} omitHtml />)

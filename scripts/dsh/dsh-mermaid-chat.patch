@@ -1,15 +1,15 @@
 diff --git a/packages/client/ui-primitives/package.json b/packages/client/ui-primitives/package.json
-index 57d14d2819..c3601b4a7a 100644
+index bf0754ee00..b1be175c6f 100644
 --- a/packages/client/ui-primitives/package.json
 +++ b/packages/client/ui-primitives/package.json
-@@ -34,6 +34,7 @@
+@@ -32,6 +32,7 @@
      "react-dom": "^18.2.0",
      "anser": "^2.3.5",
      "katex": "^0.18.7",
 +    "mermaid": "11.17.2",
      "micromark-core-commonmark": "^2.0.3",
      "micromark-util-character": "^2.1.1",
-     "micromark-util-classify-character": "^2.0.1",
+     "micromark-util-decode-string": "^2.0.1",
 diff --git a/packages/client/ui-primitives/src/markdown/MermaidBlock.module.css b/packages/client/ui-primitives/src/markdown/MermaidBlock.module.css
 new file mode 100644
 index 0000000000..490636229a
@@ -219,18 +219,18 @@ index 45c1226b83..fc767a7a13 100644
  /**
   * Render TeX source to React elements through KaTeX.
 diff --git a/packages/client/ui-primitives/src/markdown/render.tsx b/packages/client/ui-primitives/src/markdown/render.tsx
-index cdb9afcbda..c2a7b28ec9 100644
+index 3267902a4b..5f64feb722 100644
 --- a/packages/client/ui-primitives/src/markdown/render.tsx
 +++ b/packages/client/ui-primitives/src/markdown/render.tsx
-@@ -26,6 +26,7 @@ import type { CodeToolbarLabels } from '../CodeToolbar.tsx'
+@@ -27,6 +27,7 @@ import type { CodeToolbarLabels } from '../CodeToolbar.tsx'
  import { CodeBlock } from './CodeBlock.tsx'
- import { parseFileLink } from './file-link.ts'
+ import { isExplicitFilePath, parseFileLink } from './file-link.ts'
  import { renderTexToReact } from './katex.tsx'
 +import { MermaidBlock } from './MermaidBlock.tsx'
  import { LinkIconMedium, classifyLinkPath } from '../LinkIcon.tsx'
  import { useMarkdownDelegate } from './MarkdownDelegate.tsx'
  import { HoverCard } from '../HoverCard.tsx'
-@@ -390,7 +391,7 @@ function renderCode(node: Md.Code, key: Key, context: MarkdownRenderContext): Re
+@@ -433,7 +434,7 @@ function renderCode(node: Md.Code, key: Key, context: MarkdownRenderContext): Re
      // its text extraction saw the code block's trailing newline.
      return <Fragment key={key}>{renderTexToReact(`${node.value}\n`, true)}</Fragment>
    }
@@ -239,7 +239,7 @@ index cdb9afcbda..c2a7b28ec9 100644
      <CodeBlock
        key={key}
        // The replaced hast pipeline appended one synthetic newline that
-@@ -409,6 +410,12 @@ function renderCode(node: Md.Code, key: Key, context: MarkdownRenderContext): Re
+@@ -452,6 +453,12 @@ function renderCode(node: Md.Code, key: Key, context: MarkdownRenderContext): Re
        toolbarLabels={context.labels.code.toolbarLabels}
      />
    )
