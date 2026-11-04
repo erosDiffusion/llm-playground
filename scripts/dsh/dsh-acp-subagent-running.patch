@@ -1,5 +1,5 @@
 diff --git a/packages/api/session-controller/src/index.ts b/packages/api/session-controller/src/index.ts
-index 2362bce21c..6df9cf7456 100644
+index 2362bce21c..2813832558 100644
 --- a/packages/api/session-controller/src/index.ts
 +++ b/packages/api/session-controller/src/index.ts
 @@ -204,6 +204,11 @@ export class SessionController extends TypertRemoteService {
@@ -14,33 +14,23 @@ index 2362bce21c..6df9cf7456 100644
      ctx.on('agent/error', ({ agent, error }) => {
        ctx.emit('api-session/error', agent.id, errorChain(error))
      })
-diff --git a/packages/api/session-controller/src/remote-events.ts b/packages/api/session-controller/src/remote-events.ts
-index f9112e9e1f..8ae0116271 100644
---- a/packages/api/session-controller/src/remote-events.ts
-+++ b/packages/api/session-controller/src/remote-events.ts
-@@ -1,4 +1,6 @@
- /** Session Controller events available to a Remote Event assembly. */
-+import type { SessionId } from '@deepseek-ai/dsh-session'
-+
- type SessionControllerRemoteEvent =
-   | 'api-session/activity'
-   | 'api-session/added'
-@@ -11,4 +13,15 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
-     Record<SessionControllerRemoteEvent, true> {}
- }
+@@ -620,3 +625,16 @@ export class SessionController extends TypertRemoteService {
  
-+// Local patch (kit: ~/.dsh/patches/dsh-acp-subagent-running.patch, dev doc
-+// ~/.dsh/docs/dsh-acp-subagent-running.md). Mirrors the `subagent` package's own
-+// declaration so this package can relay it without depending on that package.
-+// Drop this block if upstream ever reports provider-backed children as running.
+ export { buildModelCatalog }
+ export default SessionController
++
++// Local patch (dsh-acp-subagent-running.patch): mirrors the declaration in
++// packages/subagent/subagent/src/index.ts so this package can relay the event without
++// depending on that package. Host-only file on purpose: the same augmentation placed in
++// remote-events.ts is reachable from the client program and breaks build:lib:client with
++// TS2717 on Context.sessions. Drop it if upstream reports provider-backed children through
++// agent/status.
 +declare module '@deepseek-ai/cordis' {
 +  interface Events {
 +    /** An out-of-process (provider-backed) subagent run started or settled. */
 +    'subagent/run-status'(payload: { sessionId: SessionId; running: boolean }): void
 +  }
 +}
-+
- export {}
 diff --git a/packages/subagent/subagent/src/index.ts b/packages/subagent/subagent/src/index.ts
 index 119cc26a6a..86beaf2ea0 100644
 --- a/packages/subagent/subagent/src/index.ts

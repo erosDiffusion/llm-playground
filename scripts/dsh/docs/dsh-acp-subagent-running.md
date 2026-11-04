@@ -77,3 +77,16 @@ If upstream ever reports provider-backed children through `agent/status` (or add
 subagent catalog projection), the relay becomes dead code: delete this patch and re-run the apply
 script. Probe: `grep -rn "api-session/status" packages/api/session-controller/src/index.ts` and check
 whether an `external` activation now creates an Agent.
+
+## Second trap priced (why the kit is 3 files, not 4)
+
+The event was first re-declared in `session-controller/src/remote-events.ts` (with
+`import type { SessionId }`). Host typecheck passed, and it still broke the box: `build:lib:client`
+failed with **TS2717 on `Context.sessions`** — that file is reachable from the *client* program, so the
+host-side augmentation leaked into the client graph. The next attempt (a new
+`src/subagent-run-status.ts`) failed differently: **TS6307**, because
+`packages/api/session-controller/tsconfig.host.json` lists files **explicitly** rather than using an
+`include` pattern. Final shape: the augmentation lives at the end of `src/index.ts` itself (host-only,
+already in that file list), so the kit is 3 files / 79 lines. Lesson: in this repo, face and tsconfig
+file-list decide where an ambient declaration may go — build BOTH `build:lib:host` and
+`build:lib:client`, not only package-level `tsc`.
