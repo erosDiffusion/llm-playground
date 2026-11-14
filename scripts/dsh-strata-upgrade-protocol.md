@@ -141,6 +141,10 @@ Quiet part first — it can run any time while the brain is live and costs nothi
     requested; pre-upgrade the same config sat at 1,481 MiB free = ~570 under reserve). The full auto cache moved
     to 9,574 slots ~ 18.6 GB (9,657 with the live `--slots 2` config pre-upgrade - judge cache-size drift against
     the WITH-flags number, 10,816 is flag-free). A ~1-4 % prefill drift is expected, not a regression.
+   **Verify the boot mode:** grep the launcher log (e.g. `START-262k.log`) for `filling the GPU's expert cache
+   (N experts` — N must match the full-cache number (~9.6k with the live flags, v0.2.13.1). If the start raced
+   the old engine releasing pinned RAM, 0.1.55+ can silently boot in the "resident low-RAM mode" (small cache,
+   `POST /v1/vram` → 400, decode ≈halved): restart once with quiet RAM (proven 2026-11-14, v0.2.13.1).
    → flex API still alive:
    `curl -sX POST 127.0.0.1:8080/v1/vram -d '{"reserve_mib":null}'` returns the state probe (see
    [`strata-vram-flex.md`](strata-vram-flex.md)). "Re-runs do not tune again" (0.2.x): second launch ≈13 s, not 520 s.

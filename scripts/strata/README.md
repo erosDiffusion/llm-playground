@@ -16,6 +16,20 @@ are **untracked there**, so they survive checkouts but exist nowhere else. This 
 | `bench-strata.py` | deterministic before/after performance probe: 3 greedy 256-token /v1/chat/completions vs :8080 with per-run nonces, medians of `timings.predicted_per_second` / `prompt_per_second` (llama.cpp names, same fields Strata Control's benchmark reads), JSON out + slots/BUILD.json context. Pure HTTP, safe while the brain is live. Live copy: `~/.dsh/bin/bench-strata.py`, results in `bench-results/` | authored 2026-10-31 (user order: benchmark before/after every Strata upgrade) | 2026-10-31 |
 | `UPDATE-2026-10-13.md`, `UPDATE-2026-10-21.md`, `UPDATE-2026-10-27.md` | dated handoff sheets from the three applied upgrades (state, compatibility checks, apply/rollback, gotchas) — kept verbatim as the archaeology trail | `~/Apps/Strata/UPDATE-*.md` (untracked) | 2026-10-27 |
 
+**Applied 2026-11-14:** v0.2.8 → **v0.2.13.1**, engine 0.1.54 → **0.1.59.1** (0.1.59 engines + the Control-only
+.arcfix stamp). Preflight clean (18 flags 0 missing, 0 config keys); untracked kit survived checkout; warm-build
+CUDA ON arch 120, ggml now vendored (`third_party/llama.cpp` — no llama.cpp download during builds since 0.2.13).
+Bench: decode 182.6 → **192.6 tok/s**, prefill 380 → **434** (`bench-results/2026-11-14-*`).
+Rollback ARMED MANUALLY again (local-compile swap archives nothing): `engine/.previous` = 0.1.54 rebuilt from
+tag v0.2.8 (strata + libstrata_kq.so + hand-written BUILD.json stamp, checked with `engine_version_of`).
+**INCIDENT — boot races the dying engine's RAM:** the first swap boot silently took the *resident low-RAM mode*
+(experts served via page cache, GPU cache only 4,214 experts/8 GiB instead of 9,612/18.24, `POST /v1/vram`
+answers 400 "not with the resident low-RAM mode", decode ~90 tok/s): the crashed attempt-1 engine zombie was
+still releasing ~55 GB pinned RAM while engine #2 sized its arena (0.1.55+ waits 120 s zombies + 20 s arena RAM —
+still lost). FIX: one more restart with quiet RAM → full mode back (flex probe 9,489/9,612 slots, free 1,986 MiB).
+NEW CHECK after every swap: grep `START-262k.log` boot line `filling the GPU's expert cache (N experts` —
+N ≈ 9.6k full, ~4.2k = degraded (flex dead, re-start). See also `docs/DETAILS.md` #4051/#5327 in the new tag.
+
 **Applied 2026-10-31:** v0.2.7 → **v0.2.8**, engine 0.1.52 → **0.1.54**.
 Preflight clean (18 flags 0 missing, 0 config keys missing); warm-build unchanged (CUDA ON confirmed, ggml
 commit = tag tip); detached swap: stop→`setup.sh --update`→launcher OK, engine back ~45 s. Bench (new protocol
