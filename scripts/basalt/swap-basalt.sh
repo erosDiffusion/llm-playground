@@ -23,10 +23,17 @@ say() { echo "[$(date +%H:%M:%S)] $*" | tee -a "$LOG"; }
 
 say "swap start (repo: $(git describe --tags 2>/dev/null), prev_tag: $PRE_TAG, variant: $VARIANT, archive: ${ARCHIVE:-none})"
 
-# 1. save the currently deployed binaries (untracked build outputs — rollback copies them back)
+# 1. save the currently deployed binaries — from the RUNNING process (/proc/PID/exe), not bin/:
+#    in a two-pass swap bin/ already holds the NEW binary, and saving it would clobber the old
+#    rollback copy (hit 2026-11-23; old-version archive from GitHub releases was the fallback).
+epid=$(pgrep -f 'Apps/Basalt/basalt/[b]in/basalt --serve' | head -1)
 mkdir -p bin/basalt.previous
-cp -a bin/basalt bin/basalt-bench bin/basalt-probe bin/basalt-vision bin/basalt.previous/ 2>/dev/null
-say "old binaries saved to bin/basalt.previous/ (old version: $(bin/basalt --version 2>/dev/null || echo '?'))"
+if [ -n "${epid:-}" ] && [ -r "/proc/$epid/exe" ]; then
+  cp -a "/proc/$epid/exe" bin/basalt.previous/basalt 2>/dev/null && say "old engine binary saved from /proc/$epid/exe"
+else
+  cp -a bin/basalt bin/basalt-bench bin/basalt-probe bin/basalt-vision bin/basalt.previous/ 2>/dev/null
+  say "engine not running - old binaries saved from bin/"
+fi
 
 # 2. archive route: stage the release binaries into bin/ (gitignored build output — tree stays clean)
 if [ -n "$ARCHIVE" ]; then
@@ -35,7 +42,10 @@ if [ -n "$ARCHIVE" ]; then
   tar xzf "$ARCHIVE" -C "$tmp" || { say "ABORT: extract failed"; rmdir "$tmp"; exit 1; }
   top=$(ls "$tmp")
   [ -x "$tmp/$top/bin/basalt" ] || { say "ABORT: archive has no bin/basalt"; rm -rf "$tmp"; exit 1; }
-  cp -a "$tmp/$top/bin/"* bin/ && say "staged binaries from $(basename "$ARCHIVE") ($( "$PWD/bin/basalt" --version 2>/dev/null ))"
+  # --remove-destination: plain cp opens the target with O_TRUNC, which fails ETXTBSY on the
+  # RUNNING bin/basalt and (with cp's exit masked by &&) silently kept the old binary — hit 2026-11-23.
+  cp -a --remove-destination "$tmp/$top/bin/"* bin/ || { say "ABORT: staging bin/* failed"; rm -rf "$tmp"; exit 1; }
+  say "staged binaries from $(basename "$ARCHIVE") (basalt $(stat -c%s bin/basalt) bytes)"
   rm -rf "$tmp"
 fi
 
