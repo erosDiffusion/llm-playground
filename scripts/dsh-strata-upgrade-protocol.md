@@ -166,6 +166,36 @@ git checkout <old-tag> && sh START-262k.sh               # launcher refuses if :
 Second copy of older binaries: `engine/pre-update-*/` (per-swap stamps). Reference handoff sheets (local, kept in
 the repo untracked + archived in vault [`strata/`](strata/README.md)): `UPDATE-2026-10-13.md`, `UPDATE-2026-10-21.md`.
 
+## D. Basalt upgrade (the OTHER brain — kit in [`basalt/`](basalt/README.md), authored 2026-11-23)
+
+Applies when the agent runs on **Basalt** (`~/Apps/Basalt/basalt` = a git clone of github.com/jesdga95/basalt,
+supervisor :8090, engine `bin/basalt`). Same golden rules; different mechanics:
+
+1. **Preflight (read-only):** `bash ~/.dsh/bin/basalt-upgrade-check.sh` — newest remote tag (fetches ONLY the
+   target tag ref; never `git fetch --tags`), live-engine `--flags` checked present in the tag by `git grep`,
+   serve layout + `qwen4exp` arch, tracked-tree cleanliness, and the **archive route** prereqs (driver ≥ R580
+   branch, CUDA 13 runtime on the engine's library path, requirements.txt drift vs `.venv`).
+2. **Checkout (safe while running):** `git checkout <tag>` — the local launch system is all UNTRACKED
+   (`configs/`, `scripts/`, `OPS.md`, `basalt_config.json`) and `bin/` + `.venv/` are gitignored; all survive.
+   Refuse if `git status --porcelain -uno` is non-empty (commit/stash first).
+3. **Binaries, two routes:**
+   - **Archive (preferred, no compile):** `basalt-vX.Y.Z-linux-x64.tar.gz` from the release → pass
+     `ARCHIVE=/path` to the swap script; it stages `bin/*` into the tree (gitignored output — tree stays clean).
+     serve/ tools/ data/ already match the tag from step 2.
+   - **Source:** `cmake -S . -B build -DBASALT_MODELS="qwen4exp;qwen35" -DCMAKE_BUILD_TYPE=Release &&
+     cmake --build build -j` — writes `bin/` in-tree; new inodes, the running engine keeps the old ones.
+4. **Swap (user OK, detached):** `USER_OK=1 nohup bash ~/.dsh/bin/swap-basalt.sh &` (chat dark ~3–5 min —
+   kill + page-locked expert load; variant default `262k2v`). RAM rule: the load page-locks the whole expert
+   arena (~57 GiB measured on the Qwen3.8-FN-DQ6_K pack) — check `free -h` first; never swap on a box at its
+   RAM guard floor (engine `--ram-reserve-mib 2048`).
+5. **Rollback:** `cp -a bin/basalt.previous/. bin/ && git checkout <old-tag> && nohup scripts/basalt-serve.sh <variant> &`.
+6. **Verify + bench:** `/health` `loaded:true`, `/metrics` version, then `scripts/basalt-bench-matrix.sh` or the
+   saved baseline (`~/.dsh/bench-results/`, 262K 1-slot median 303.9 t/s probed 2026-11-22).
+
+**Never:** kill on unanchored patterns (the serve/kill patterns are `Apps/Basalt/basalt/`-anchored so they can
+never touch Strata — keep them so); restart Basalt ad-hoc from the agent (it IS the agent — swap only detached,
+user-OK'd, exactly like `swap-strata.sh` for Strata).
+
 ## C. Close-out (always, 5 min)
 
 1. Decision log (`~/.dsh/memory/decisions.md`): one dated line — old→new versions, patch re-merges (versions bumped),
